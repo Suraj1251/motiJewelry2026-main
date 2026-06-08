@@ -1,0 +1,245 @@
+/* Theme variables and base styles for Moti Jewellers */
+:root {
+  --navbar: #d68b16;
+  --header-gradient-dark: #b5730e;
+  --header-gradient-light: #d68b16;
+  --btn-purple: #7C3AED;
+  --logout-red: #EF4444;
+  --whatsapp-green: #25D366;
+  --page-bg: #F5F5F5;
+  --card-bg: #FFFFFF;
+  --text-main: #1F2937;
+  --text-secondary: #6B7280;
+  --border: #E5E7EB;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700&display=swap');
+
+* { font-family: 'Poppins', sans-serif; }
+h1,h2,h3,.gold-font { font-family: 'Playfair Display', serif; }
+
+body {
+  background: var(--page-bg);
+  color: var(--text-main);
+  min-height: 100vh;
+}
+
+/* Navigation */
+.nav-gold {
+  background: linear-gradient(135deg, var(--header-gradient-dark), var(--header-gradient-light));
+  border-bottom: 2px solid var(--border);
+  box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+  color: var(--card-bg);
+}
+
+.nav-logo { height:45px; width:auto; object-fit:contain; filter: drop-shadow(0 0 6px rgba(122,46,230,0.25)); transition: transform .25s ease; }
+.nav-logo:hover { transform: scale(1.05); }
+
+.desktop-nav a, .mobile-menu a { color: var(--card-bg); }
+
+/* Cards and inputs */
+.jewel-card, .emi-card, .total-section { background: var(--card-bg); border: 1px solid var(--border); color: var(--text-main); border-radius: 12px; }
+
+.jewel-input { background: var(--card-bg); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; }
+.jewel-input::placeholder { color: var(--text-secondary); }
+
+/* Buttons */
+.btn-gold { background: var(--btn-purple); color: #fff; border: none; border-radius: 999px; font-weight:700; }
+.btn-gold:hover { filter: brightness(.95); }
+.btn-logout, .logout-btn { background: var(--logout-red); color: #fff; }
+
+/* WhatsApp icon */
+.whatsapp-icon, .fab.fa-whatsapp { color: var(--whatsapp-green); }
+
+/* Tables */
+.jewel-table { border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg); }
+.jewel-table th { background: linear-gradient(135deg, var(--header-gradient-dark), var(--header-gradient-light)); color: #fff; font-weight:600; }
+.jewel-table td { color: var(--text-main); }
+
+/* Mobile menu */
+.mobile-menu { background: linear-gradient(145deg, var(--header-gradient-dark), var(--header-gradient-light)); border-left: 2px solid var(--border); }
+.mobile-menu a { color: var(--card-bg); border-bottom: 1px solid rgba(255,255,255,0.06); }
+
+/* Status badges */
+.status-low { background: #FEE2E2; color: #991B1B; }
+.status-medium { background: #FEF3C7; color: #92400E; }
+.status-high { background: #D1FAE5; color: #065F46; }
+
+/* Utilities */
+.gold-font { color: var(--header-gradient-light); }
+.text-main { color: var(--text-main); }
+.text-secondary { color: var(--text-secondary); }
+
+/* Print styles remain neutral */
+@media print { body * { visibility: visible; } }
+
+/* ========== LOGO SIZE FIX ========== */
+.floating-logo img {
+    width: 150px !important;
+    height: 150px !important;
+    object-fit: contain;
+}
+
+.floating-logo {
+    margin-bottom: 10px !important;
+}
+
+/* ========== FOOTER EXTRA SPACE FIX ========== */
+footer.footer-jewel {
+    margin-bottom: 0 !important;
+    padding-bottom: 20px !important;
+}
+
+body {
+    overflow-x: hidden;
+}
+
+.jewel-sparkle {
+    bottom: auto !important;
+    max-height: 100vh;
+    overflow: hidden;
+}
+
+html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Remove space after footer */
+footer + * { display: none; }
+
+/* ========== FOOTER LOGO FIX ========== */
+.footer-logo img {
+    width: 60px !important;
+    height: 60px !important;
+    object-fit: contain;
+}
+
+.footer-logo {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin-bottom: 12px !important;
+}
+
+/* ========== EXTRA SPACE FIX (sparkles) ========== */
+.jewel-sparkle {
+    position: fixed !important;
+    pointer-events: none;
+    z-index: 0;
+}
+
+html {
+    overflow-x: hidden;
+}
+
+body {
+    overflow-x: hidden;
+    min-height: unset !important;
+}
+
+footer.footer-jewel {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 0 !important;
+}
+
+/* ========== FLOATING LOGO CENTER FIX ========== */
+.floating-logo {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    text-align: center !important;
+    margin: 0 auto 20px auto !important;
+}
+
+.floating-logo img {
+    width: 180px !important;
+    height: 180px !important;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto !important;
+}
+
+.hero-with-logo {
+    text-align: center !important;
+}
+
+.hero-with-logo .container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+}
+
+/* ========== MOBILE MENU POSITION FIX ========== */
+#mobileMenu {
+    position: fixed !important;
+    top: 0 !important;
+    right: -100% !important;
+    z-index: 9999 !important;
+}
+
+#mobileMenu.active {
+    right: 0 !important;
+}
+
+#mobileOverlay {
+    position: fixed !important;
+    z-index: 9998 !important;
+    display: none !important;
+}
+
+#mobileOverlay.active {
+    display: block !important;
+}
+
+/* ========== DROPDOWN FIX ========== */
+select option,
+datalist option,
+.product-dropdown option,
+select[name="product_id"] option,
+#productSearch option,
+.jewel-input option {
+    background: #FFFFFF !important;
+    color: #1F2937 !important;
+    padding: 8px !important;
+}
+
+select option:hover,
+select option:checked {
+    background: #7C3AED !important;
+    color: white !important;
+}
+
+/* Autocomplete / datalist dropdown */
+input[list] {
+    background: #FFFFFF !important;
+    color: #1F2937 !important;
+}
+
+@media print {
+    /* Sab kuch hide karo */
+    body * {
+        visibility: hidden;
+    }
+    
+    /* Sirf invoice dikhao */
+    .print-invoice,
+    .print-invoice * {
+        visibility: visible;
+    }
+    
+    /* Invoice ko screen ke top pe lao */
+    .print-invoice {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+    
+    /* Print button bhi hide karo */
+    .no-print {
+        display: none !important;
+    }
+}
