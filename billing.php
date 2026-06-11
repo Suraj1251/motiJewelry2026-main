@@ -211,9 +211,10 @@ $itemTypeOptions = [
     'Gold 18K' => [],
     'Silver'   => [],
     'Stone'    => [],
-    'Diamond'  => []
+    'Diamond'  => [],
+    'Others'   => []
 ];
-$categories = ['Gold 22K', 'Gold 18K', 'Silver', 'Stone', 'Diamond'];
+$categories = ['Gold 22K', 'Gold 18K', 'Silver', 'Stone', 'Diamond', 'Others'];
 foreach ($categories as $cat) {
     $safeCat = mysqli_real_escape_string($conn, $cat);
     $res = mysqli_query($conn, "SELECT DISTINCT item_name FROM products WHERE category = '$safeCat' AND item_name != '' ORDER BY item_name");
@@ -231,6 +232,7 @@ $itemTypeOptions['Gold 18K'] = array_unique(array_merge($itemTypeOptions['Gold 1
 $itemTypeOptions['Silver']   = array_unique(array_merge($itemTypeOptions['Silver'],   ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Tops','Ladies Ring','Gents Ring','Breslet','Tika','Loket','Mankha','Payal','Bichiya','Nosering','Baby Ring','Pat (Gross)','S- (Gross)','Nosepin (Gross)','Sankha','Pola','Other']));
 $itemTypeOptions['Stone']    = array_unique(array_merge($itemTypeOptions['Stone'],    ['Natural Pearl','Gomed','Red Coral','Nila','Panna','Jerkon','Amethist','Cats Eye','Other']));
 $itemTypeOptions['Diamond']  = array_unique(array_merge($itemTypeOptions['Diamond'],  ['Ladies Ring','Gents Ring','Tops','Mangal Sutra','Nose pin','Necklace','Other']));
+$itemTypeOptions['Others']   = array_unique(array_merge($itemTypeOptions['Others'],   ['Shankha','Pala','Mala','Moti Mala','Trasel','Branch Fram','Braslate Pala','parl Mala','Gala','Reparing','Stamp Charg','Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Other']));
 
 // ── NEW: Fetch due-today payments ─────────────────────────────────────────
 $today = date('Y-m-d');
@@ -274,9 +276,16 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
     if(empty($due_date)) $due_date = 'NULL';
     else $due_date = "'" . $due_date . "'";
 
-    if ($is_split && ($cash_paid + $upi_paid) > 0) {
+    if ($is_split) {
         $payment_method = 'Cash+UPI';
         $paid_amount    = $cash_paid + $upi_paid;
+        if ($paid_amount < $total_amount) {
+            if ($paid_amount > 0) {
+                $payment_status = 'part';
+            } else {
+                $payment_status = 'unpaid';
+            }
+        }
     }
 
     if(strtoupper($payment_method) === 'NEFT') {
@@ -284,8 +293,16 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
     }
 
     $making_charge_amount = $making_charge;
-    $cgst_rate   = ($gst_type === 'gst') ? 1.5 : 0;
-    $sgst_rate   = ($gst_type === 'gst') ? 1.5 : 0;
+    if ($gst_type === 'gst_3') {
+        $cgst_rate = 1.5;
+        $sgst_rate = 1.5;
+    } elseif ($gst_type === 'gst_18') {
+        $cgst_rate = 9;
+        $sgst_rate = 9;
+    } else {
+        $cgst_rate = 0;
+        $sgst_rate = 0;
+    }
     $cgst_amount = ($subtotal * $cgst_rate) / 100;
     $sgst_amount = ($subtotal * $sgst_rate) / 100;
     $gst_amount  = $cgst_amount + $sgst_amount;
@@ -996,6 +1013,7 @@ window.addEventListener('load', function() {
                                         <option value="Silver">Silver</option>
                                         <option value="Stone">Stone</option>
                                         <option value="Diamond">Diamond</option>
+                                        <option value="Others">Others</option>
                                     </select>
                                 </div>
                                 <div>
@@ -1005,13 +1023,13 @@ window.addEventListener('load', function() {
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Weight (GMS)</label>
+                                    <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Weight (GMS)/Quantity</label>
                                     <input type="number" id="catQty" placeholder="Enter grams" step="0.001" min="0.001"
                                         class="jewel-input w-full rounded-lg px-3 py-2 text-sm">
                                 </div>
                                 <div id="itemTypePriceWrapper">
                                     <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">
-                                        Rate per GMS (&#8377;) <span id="catRateNote" class="font-normal" style="color:#9ca3af;"></span>
+                                        Rate per GMS (&#8377;)/Rate per Quantity (&#8377;) <span id="catRateNote" class="font-normal" style="color:#9ca3af;"></span>
                                     </label>
                                     <input type="number" id="catRate" placeholder="Rate (auto from shop)" step="0.01" min="0"
                                         class="jewel-input w-full rounded-lg px-3 py-2 text-sm" oninput="calculateTotal()">
@@ -1030,12 +1048,12 @@ window.addEventListener('load', function() {
                                         class="jewel-input w-full rounded-lg px-3 py-2 text-sm">
                                 </div>
                                 <div>
-                                    <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Weight (GMS) <span style="color:#9ca3af;">(0 for fixed price)</span></label>
+                                    <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Weight (GMS)/Quantity <span style="color:#9ca3af;">(0 for fixed price)</span></label>
                                     <input type="number" id="manualGms" placeholder="0" step="0.001" min="0" value="0"
                                         class="jewel-input w-full rounded-lg px-3 py-2 text-sm" oninput="calcManualTotal()">
                                 </div>
                                 <div>
-                                    <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Rate per GMS (&#8377;) <span style="color:#9ca3af;">(0 for fixed price)</span></label>
+                                    <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Rate per GMS (&#8377;)/Rate per Quantity (&#8377;) <span style="color:#9ca3af;">(0 for fixed price)</span></label>
                                     <input type="number" id="manualRate" placeholder="0.00" step="0.01" min="0" value="0"
                                         class="jewel-input w-full rounded-lg px-3 py-2 text-sm" oninput="calcManualTotal()">
                                 </div>
@@ -1061,7 +1079,8 @@ window.addEventListener('load', function() {
                         <label class="block mb-1 text-sm font-semibold" style="color:#7a4e0a;">GST Type</label>
                         <select name="gst_type" id="gstType" class="jewel-input w-full rounded-lg px-3 py-2 text-sm" onchange="calculateTotal()">
                             <option value="non_gst">Non-GST (0% Tax)</option>
-                            <option value="gst">GST (3% — 1.5% CGST + 1.5% SGST)</option>
+                            <option value="gst_3">GST (3% — 1.5% CGST + 1.5% SGST)</option>
+                            <option value="gst_18">GST (18% — 9% CGST + 9% SGST)</option>
                         </select>
                     </div>
 
@@ -1125,10 +1144,10 @@ window.addEventListener('load', function() {
                                     <span>Discount</span><span id="discountAmount">- &#8377;0.00</span>
                                 </div>
                                 <div class="flex justify-between text-sm" style="color:#2563eb;" id="cgstRow">
-                                    <span>CGST (1.5%)</span><span id="cgstAmount">&#8377;0.00</span>
+                                    <span>CGST (<span id="cgstPercent">1.5</span>%)</span><span id="cgstAmount">&#8377;0.00</span>
                                 </div>
                                 <div class="flex justify-between text-sm" style="color:#2563eb;" id="sgstRow">
-                                    <span>SGST (1.5%)</span><span id="sgstAmount">&#8377;0.00</span>
+                                    <span>SGST (<span id="sgstPercent">1.5</span>%)</span><span id="sgstAmount">&#8377;0.00</span>
                                 </div>
                                 <div style="height:1px;background:rgba(181,115,14,0.25);margin:8px 0;"></div>
                                 <div class="flex justify-between font-bold text-xl" style="color:#800020;">
@@ -1197,7 +1216,7 @@ window.addEventListener('load', function() {
                                         oninput="onSplitInput('upi')">
                                 </div>
                             </div>
-                            <div class="flex gap-2 mb-3 flex-wrap">
+                            <div class="flex gap-2 mb-3 flex-wrap" style="display:none;" id="quickSplitButtons">
                                 <span class="text-xs font-semibold self-center" style="color:#6b7280;">Quick:</span>
                                 <button type="button" onclick="quickSplit(50)" class="text-xs px-3 py-1 rounded-full font-semibold" style="background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.3);color:#1d4ed8;">50/50</button>
                                 <button type="button" onclick="quickSplit(25)" class="text-xs px-3 py-1 rounded-full font-semibold" style="background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.3);color:#1d4ed8;">25/75</button>
@@ -1271,6 +1290,59 @@ window.addEventListener('load', function() {
 
         <!-- Right Column -->
         <div>
+            <!-- My Shop Rates -->
+            <div class="jewel-card p-4 sm:p-5 mt-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-base font-bold" style="color:#800020;font-family:'Playfair Display',serif;">
+                        <i class="fas fa-store mr-2" style="color:#d68b16;"></i> My Shop Rates
+                    </h3>
+                    <span class="text-xs px-2 py-1 rounded-lg" id="shopRateSaveStatus"
+                        style="background:rgba(214,139,22,0.1);border:1px solid rgba(214,139,22,0.3);color:#b5730e;">Not saved</span>
+                </div>
+                <?php
+                $shopFields = [
+                    ['key'=>'gold22','label'=>'Gold 22K','color'=>'#d68b16','dispId'=>'shopGold22Display','inputId'=>'shopGold22Input','step'=>'1'],
+                    ['key'=>'gold18','label'=>'Gold 18K','color'=>'#b5730e','dispId'=>'shopGold18Display','inputId'=>'shopGold18Input','step'=>'1'],
+                    ['key'=>'silver','label'=>'Silver',  'color'=>'#6b7280','dispId'=>'shopSilverDisplay', 'inputId'=>'shopSilverInput', 'step'=>'0.5'],
+                    ['key'=>'diamond','label'=>'Diamond','color'=>'#2563eb','dispId'=>'shopDiamondDisplay','inputId'=>'shopDiamondInput','step'=>'1'],
+                ];
+                foreach($shopFields as $f): ?>
+                <div class="mb-3">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs font-semibold" style="color:<?php echo $f['color']; ?>;">
+                            <?php echo $f['label']; ?> <span style="color:#9ca3af;font-weight:400;">(per 10g)</span>
+                        </label>
+                        <span class="text-xs font-bold" style="color:<?php echo $f['color']; ?>;" id="<?php echo $f['dispId']; ?>">&#8212;</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="number" id="<?php echo $f['inputId']; ?>" placeholder="Enter your shop price"
+                            step="<?php echo $f['step']; ?>" min="0" class="jewel-input flex-1 rounded-lg px-3 py-2 text-sm"
+                            oninput="previewShopRate('<?php echo $f['key']; ?>')">
+                        <button onclick="saveShopRate('<?php echo $f['key']; ?>')"
+                            class="btn-gold px-3 py-2 rounded-lg text-xs font-bold">Save</button>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+                <button onclick="saveAllShopRates()" class="btn-gold w-full py-2 rounded-lg text-sm font-bold mt-1">
+                    &#128190; Save All Rates
+                </button>
+                <div class="p-3 rounded-xl mt-3" style="background:rgba(214,139,22,0.05);border:1px solid rgba(181,115,14,0.12);">
+                    <div class="text-xs font-semibold mb-2" style="color:#b5730e;">&#9878;&#65039; Shop Value Calculator</div>
+                    <div class="flex gap-2">
+                        <select id="shopMetalSelect" class="jewel-input flex-1 rounded-lg px-2 py-1 text-xs" onchange="calcShopValue()">
+                            <option value="gold22">Gold 22K</option>
+                            <option value="gold18">Gold 18K</option>
+                            <option value="silver">Silver</option>
+                            <option value="diamond">Diamond</option>
+                        </select>
+                        <input type="number" id="shopMetalGrams" placeholder="GMS" step="0.001" min="0"
+                            class="jewel-input w-20 rounded-lg px-2 py-1 text-xs" oninput="calcShopValue()">
+                    </div>
+                    <div class="text-center mt-2 font-bold text-sm" id="shopCalcResult" style="color:#059669;">&#8212;</div>
+                </div>
+                <p class="text-xs mt-2 text-center" style="color:#9ca3af;" id="shopRateLastSaved">Rates saved in your browser</p>
+            </div>
+
             <!-- EMI Calculator -->
             <div class="jewel-card p-4 sm:p-6 sticky top-24">
                 <h3 class="text-lg font-bold mb-4" style="color:#800020;font-family:'Playfair Display',serif;">
@@ -1348,59 +1420,6 @@ window.addEventListener('load', function() {
                     <div class="text-center mt-2 font-bold text-sm" id="metalCalcResult" style="color:#059669;">&#8212;</div>
                 </div>
                 <p class="text-xs mt-2 text-center" style="color:#9ca3af;" id="metalUpdateInfo">Fetching Indian market rates...</p>
-            </div>
-
-            <!-- My Shop Rates -->
-            <div class="jewel-card p-4 sm:p-5 mt-4">
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="text-base font-bold" style="color:#800020;font-family:'Playfair Display',serif;">
-                        <i class="fas fa-store mr-2" style="color:#d68b16;"></i> My Shop Rates
-                    </h3>
-                    <span class="text-xs px-2 py-1 rounded-lg" id="shopRateSaveStatus"
-                        style="background:rgba(214,139,22,0.1);border:1px solid rgba(214,139,22,0.3);color:#b5730e;">Not saved</span>
-                </div>
-                <?php
-                $shopFields = [
-                    ['key'=>'gold22','label'=>'Gold 22K','color'=>'#d68b16','dispId'=>'shopGold22Display','inputId'=>'shopGold22Input','step'=>'1'],
-                    ['key'=>'gold18','label'=>'Gold 18K','color'=>'#b5730e','dispId'=>'shopGold18Display','inputId'=>'shopGold18Input','step'=>'1'],
-                    ['key'=>'silver','label'=>'Silver',  'color'=>'#6b7280','dispId'=>'shopSilverDisplay', 'inputId'=>'shopSilverInput', 'step'=>'0.5'],
-                    ['key'=>'diamond','label'=>'Diamond','color'=>'#2563eb','dispId'=>'shopDiamondDisplay','inputId'=>'shopDiamondInput','step'=>'1'],
-                ];
-                foreach($shopFields as $f): ?>
-                <div class="mb-3">
-                    <div class="flex items-center justify-between mb-1">
-                        <label class="text-xs font-semibold" style="color:<?php echo $f['color']; ?>;">
-                            <?php echo $f['label']; ?> <span style="color:#9ca3af;font-weight:400;">(per 10g)</span>
-                        </label>
-                        <span class="text-xs font-bold" style="color:<?php echo $f['color']; ?>;" id="<?php echo $f['dispId']; ?>">&#8212;</span>
-                    </div>
-                    <div class="flex gap-2">
-                        <input type="number" id="<?php echo $f['inputId']; ?>" placeholder="Enter your shop price"
-                            step="<?php echo $f['step']; ?>" min="0" class="jewel-input flex-1 rounded-lg px-3 py-2 text-sm"
-                            oninput="previewShopRate('<?php echo $f['key']; ?>')">
-                        <button onclick="saveShopRate('<?php echo $f['key']; ?>')"
-                            class="btn-gold px-3 py-2 rounded-lg text-xs font-bold">Save</button>
-                    </div>
-                </div>
-                <?php endforeach; ?>
-                <button onclick="saveAllShopRates()" class="btn-gold w-full py-2 rounded-lg text-sm font-bold mt-1">
-                    &#128190; Save All Rates
-                </button>
-                <div class="p-3 rounded-xl mt-3" style="background:rgba(214,139,22,0.05);border:1px solid rgba(181,115,14,0.12);">
-                    <div class="text-xs font-semibold mb-2" style="color:#b5730e;">&#9878;&#65039; Shop Value Calculator</div>
-                    <div class="flex gap-2">
-                        <select id="shopMetalSelect" class="jewel-input flex-1 rounded-lg px-2 py-1 text-xs" onchange="calcShopValue()">
-                            <option value="gold22">Gold 22K</option>
-                            <option value="gold18">Gold 18K</option>
-                            <option value="silver">Silver</option>
-                            <option value="diamond">Diamond</option>
-                        </select>
-                        <input type="number" id="shopMetalGrams" placeholder="GMS" step="0.001" min="0"
-                            class="jewel-input w-20 rounded-lg px-2 py-1 text-xs" oninput="calcShopValue()">
-                    </div>
-                    <div class="text-center mt-2 font-bold text-sm" id="shopCalcResult" style="color:#059669;">&#8212;</div>
-                </div>
-                <p class="text-xs mt-2 text-center" style="color:#9ca3af;" id="shopRateLastSaved">Rates saved in your browser</p>
             </div>
         </div>
     </div><!-- /grid -->
@@ -1674,6 +1693,24 @@ window.addEventListener('load', function() {
 <script>
 const ALL_PRODUCTS = <?php echo json_encode($all_products, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 const itemTypeOptions = <?php echo json_encode($itemTypeOptions, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+const defaultItemTypeOptions = {
+    'Gold 22K': ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Other'],
+    'Gold 18K': ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Baby Ring','Bali','Pitaring','Other'],
+    'Silver':   ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Tops','Ladies Ring','Gents Ring','Breslet','Tika','Loket','Mankha','Payal','Bichiya','Nosering','Baby Ring','Pat (Gross)','S- (Gross)','Nosepin (Gross)','Sankha','Pola','Other'],
+    'Stone':    ['Natural Pearl','Gomed','Red Coral','Nila','Panna','Jerkon','Amethist','Cats Eye','Other'],
+    'Diamond':  ['Ladies Ring','Gents Ring','Tops','Mangal Sutra','Nose pin','Necklace','Other'],
+    'Others':   ['Shankha','Pala','Mala','Moti Mala','Trasel','Branch Fram','Braslate Pala','parl Mala','Gala','Reparing','Stamp Charg','Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Other']
+};
+const mergedItemTypeOptions = {};
+Object.keys(defaultItemTypeOptions).forEach(category => {
+    const dbOptions = Array.isArray(itemTypeOptions[category]) ? itemTypeOptions[category] : [];
+    mergedItemTypeOptions[category] = Array.from(new Set([...dbOptions, ...defaultItemTypeOptions[category]]));
+});
+Object.keys(itemTypeOptions).forEach(category => {
+    if(!mergedItemTypeOptions[category]) {
+        mergedItemTypeOptions[category] = itemTypeOptions[category];
+    }
+});
 
 let items = [];
 let currentTab = 'stock';
@@ -1796,7 +1833,7 @@ function addStockItem() {
         quantity: qty,
         price: finalRate,
         total: parseFloat((finalRate * qty).toFixed(2)),
-        gst_applicable: document.getElementById('gstType').value === 'gst'
+        gst_applicable: document.getElementById('gstType').value !== 'non_gst'
     });
     updateItemsList();
     calculateTotal();
@@ -1810,7 +1847,7 @@ function updateItemTypes() {
     const itemTypeSelect = document.getElementById('itemType');
     itemTypeSelect.innerHTML = '<option value="">-- Select Item Type --</option>';
     if(!category) return;
-    const options = itemTypeOptions[category] || [];
+    const options = mergedItemTypeOptions[category] || [];
     options.forEach(item => {
         const opt = document.createElement('option');
         opt.value = item; opt.textContent = item;
@@ -1860,7 +1897,7 @@ function addCategoryItem() {
         price: rate,
         total: parseFloat((rate * qty).toFixed(2)),
         is_item_only: true,
-        gst_applicable: document.getElementById('gstType').value === 'gst'
+        gst_applicable: document.getElementById('gstType').value !== 'non_gst'
     });
     updateItemsList();
     calculateTotal();
@@ -1895,7 +1932,7 @@ function addManualItem() {
         price: (gms > 0 && rate > 0) ? rate : 0,
         total: total,
         is_manual: true,
-        gst_applicable: document.getElementById('gstType').value === 'gst'
+        gst_applicable: document.getElementById('gstType').value !== 'non_gst'
     });
     updateItemsList();
     calculateTotal();
@@ -1949,8 +1986,16 @@ function calculateTotal() {
     const discount  = parseFloat(document.getElementById('discount').value)     || 0;
     const gstType   = document.getElementById('gstType').value;
     const gstBase = items.reduce((sum, item) => sum + (item.gst_applicable ? item.total : 0), 0);
-    const cgst = gstType === 'gst' ? gstBase * 0.015 : 0;
-    const sgst = gstType === 'gst' ? gstBase * 0.015 : 0;
+    let cgstRate = 0, sgstRate = 0;
+    if (gstType === 'gst_3') {
+        cgstRate = 0.015;
+        sgstRate = 0.015;
+    } else if (gstType === 'gst_18') {
+        cgstRate = 0.09;
+        sgstRate = 0.09;
+    }
+    const cgst = gstBase * cgstRate;
+    const sgst = gstBase * sgstRate;
     const grand = subtotal + makingAmt + hallmark + cgst + sgst - discount;
     const fmt = v => '\u20B9' + v.toFixed(2);
     document.getElementById('subtotal').textContent       = fmt(subtotal);
@@ -1960,8 +2005,10 @@ function calculateTotal() {
     document.getElementById('cgstAmount').textContent     = fmt(cgst);
     document.getElementById('sgstAmount').textContent     = fmt(sgst);
     document.getElementById('grandTotal').textContent     = fmt(grand);
-    document.getElementById('cgstRow').style.display = gstType === 'gst' ? '' : 'none';
-    document.getElementById('sgstRow').style.display = gstType === 'gst' ? '' : 'none';
+    document.getElementById('cgstPercent').textContent    = (cgstRate * 100).toFixed(1);
+    document.getElementById('sgstPercent').textContent    = (sgstRate * 100).toFixed(1);
+    document.getElementById('cgstRow').style.display = (gstType === 'gst_3' || gstType === 'gst_18') ? '' : 'none';
+    document.getElementById('sgstRow').style.display = (gstType === 'gst_3' || gstType === 'gst_18') ? '' : 'none';
     document.getElementById('hiddenSubtotal').value  = subtotal;
     document.getElementById('hiddenGst').value       = cgst + sgst;
     document.getElementById('hiddenTotal').value     = grand;
@@ -2137,18 +2184,9 @@ setInterval(fetchMetalPrices, 10 * 60 * 1000);
 function toggleSplitPayment() {
     const method = document.getElementById('paymentMethod').value;
     const splitDiv = document.getElementById('splitPaymentDiv');
-    const partDiv  = document.getElementById('partAmountDiv');
     if(method === 'Split') {
         splitDiv.style.display = 'block';
-        partDiv.style.display  = 'none';
         document.getElementById('hiddenIsSplit').value = '1';
-        const grand = parseFloat(document.getElementById('grandTotal').textContent.replace('\u20B9','').replace(/,/g,'')) || 0;
-        if(grand > 0 && !parseFloat(document.getElementById('cashAmount').value) && !parseFloat(document.getElementById('upiAmount').value)) {
-            document.getElementById('cashAmount').value = grand;
-            document.getElementById('upiAmount').value  = 0;
-            document.getElementById('hiddenCashPaid').value = grand;
-            document.getElementById('hiddenUpiPaid').value  = 0;
-        }
         updateSplitDisplay();
     } else {
         splitDiv.style.display = 'none';
@@ -2157,29 +2195,23 @@ function toggleSplitPayment() {
         document.getElementById('upiAmount').value  = 0;
         document.getElementById('hiddenCashPaid').value = 0;
         document.getElementById('hiddenUpiPaid').value  = 0;
-        togglePartPayment();
     }
+    togglePartPayment();
 }
 
 function onSplitInput(changedField) {
     const grand = parseFloat(document.getElementById('grandTotal').textContent.replace('\u20B9','').replace(/,/g,'')) || 0;
     let cash = parseFloat(document.getElementById('cashAmount').value) || 0;
     let upi  = parseFloat(document.getElementById('upiAmount').value)  || 0;
-    if(changedField === 'cash') {
-        cash = Math.min(Math.max(0, cash), grand);
-        document.getElementById('cashAmount').value = cash;
-        upi = Math.max(0, grand - cash);
-        document.getElementById('upiAmount').value = upi.toFixed(2);
-    } else {
-        upi = Math.min(Math.max(0, upi), grand);
-        document.getElementById('upiAmount').value = upi;
-        cash = Math.max(0, grand - upi);
-        document.getElementById('cashAmount').value = cash.toFixed(2);
-    }
+    cash = Math.min(Math.max(0, cash), grand);
+    document.getElementById('cashAmount').value = cash;
+    upi = Math.min(Math.max(0, upi), grand);
+    document.getElementById('upiAmount').value = upi;
     document.getElementById('hiddenCashPaid').value = cash;
     document.getElementById('hiddenUpiPaid').value  = upi;
     document.getElementById('paidAmount').value = (cash + upi).toFixed(2);
     updateSplitDisplay();
+    updateBalanceFromPart();
 }
 
 function quickSplit(cashPercent) {
@@ -2193,6 +2225,7 @@ function quickSplit(cashPercent) {
     document.getElementById('hiddenUpiPaid').value  = upi;
     document.getElementById('paidAmount').value = grand.toFixed(2);
     updateSplitDisplay();
+    updateBalanceFromPart();
 }
 
 function updateSplitDisplay() {
@@ -2231,14 +2264,33 @@ function togglePartPayment() {
     const method = document.getElementById('paymentMethod').value;
     const partDiv = document.getElementById('partAmountDiv');
     const balDiv  = document.getElementById('balanceDisplay');
-    if(method === 'Split') return;
+    const grand = parseFloat(document.getElementById('grandTotal').textContent.replace('\u20B9','').replace(/,/g,'')) || 0;
+    if(method === 'Split') {
+        const cash = parseFloat(document.getElementById('cashAmount').value) || 0;
+        const upi  = parseFloat(document.getElementById('upiAmount').value)  || 0;
+        const paid = cash + upi;
+        const remaining = Math.max(0, grand - paid);
+        if(remaining > 0) {
+            partDiv.style.display = 'block';
+            balDiv.style.display  = 'block';
+            document.getElementById('balanceAmt').textContent = '\u20B9' + remaining.toFixed(2);
+            document.getElementById('paidAmount').value = paid.toFixed(2);
+            if(status === 'paid' && paid > 0) {
+                document.getElementById('paymentStatus').value = 'part';
+            }
+        } else {
+            partDiv.style.display = 'none';
+            balDiv.style.display  = 'none';
+        }
+        updateReminderButtonVisibility();
+        return;
+    }
     if(status === 'part') {
         partDiv.style.display = 'block';
         balDiv.style.display  = 'block';
     } else if(status === 'unpaid') {
         partDiv.style.display = 'none';
         balDiv.style.display  = 'block';
-        const grand = parseFloat(document.getElementById('grandTotal').textContent.replace('\u20B9','').replace(/,/g,'')) || 0;
         document.getElementById('balanceAmt').textContent = '\u20B9' + grand.toFixed(2);
     } else {
         partDiv.style.display = 'none';
@@ -2270,28 +2322,61 @@ function updateDueDateHint() {
 }
 
 function updateBalanceFromPart() {
-    if(document.getElementById('paymentMethod').value === 'Split') return;
+    const method = document.getElementById('paymentMethod').value;
     const status = document.getElementById('paymentStatus').value;
     const grand  = parseFloat(document.getElementById('grandTotal').textContent.replace('\u20B9','').replace(/,/g,'')) || 0;
-    if(status === 'part') {
-        const paid = parseFloat(document.getElementById('paidAmount').value) || 0;
-        document.getElementById('balanceAmt').textContent = '\u20B9' + Math.max(0, grand - paid).toFixed(2);
-        document.getElementById('balanceDisplay').style.display = 'block';
-    } else if(status === 'unpaid') {
-        document.getElementById('balanceAmt').textContent = '\u20B9' + grand.toFixed(2);
-        document.getElementById('balanceDisplay').style.display = 'block';
+    const partDiv = document.getElementById('partAmountDiv');
+    const balDiv  = document.getElementById('balanceDisplay');
+    let balance = 0;
+
+    if(method === 'Split') {
+        const cash = parseFloat(document.getElementById('cashAmount').value) || 0;
+        const upi  = parseFloat(document.getElementById('upiAmount').value)  || 0;
+        const paid = cash + upi;
+        const remaining = Math.max(0, grand - paid);
+        balance = remaining;
+        if(remaining > 0) {
+            partDiv.style.display = 'block';
+            balDiv.style.display  = 'block';
+            document.getElementById('paidAmount').value = paid.toFixed(2);
+            document.getElementById('balanceAmt').textContent = '\u20B9' + remaining.toFixed(2);
+            if(status === 'paid' && paid > 0) {
+                document.getElementById('paymentStatus').value = 'part';
+            }
+        } else {
+            partDiv.style.display = 'none';
+            balDiv.style.display  = 'none';
+        }
+    } else {
+        if(status === 'part') {
+            const paid = parseFloat(document.getElementById('paidAmount').value) || 0;
+            balance = Math.max(0, grand - paid);
+            document.getElementById('balanceAmt').textContent = '\u20B9' + balance.toFixed(2);
+            partDiv.style.display = 'block';
+            balDiv.style.display  = 'block';
+        } else if(status === 'unpaid') {
+            balance = grand;
+            document.getElementById('balanceAmt').textContent = '\u20B9' + balance.toFixed(2);
+            partDiv.style.display = 'none';
+            balDiv.style.display  = 'block';
+        } else {
+            balance = 0;
+            partDiv.style.display = 'none';
+            balDiv.style.display  = 'none';
+        }
     }
     updateReminderButtonVisibility();
 }
 
 function updateReminderButtonVisibility() {
     const status = document.getElementById('paymentStatus').value;
+    const method = document.getElementById('paymentMethod').value;
     const email = document.getElementById('customerEmail').value.trim();
     const mobile = document.getElementById('customerMobile').value.trim();
     const balanceText = document.getElementById('balanceAmt').textContent.replace(/\u20B9|,/g, '');
     const balance = parseFloat(balanceText) || 0;
     const button = document.getElementById('reminderButton');
-    if((status === 'part' || status === 'unpaid') && balance > 0 && (email !== '' || mobile !== '')) {
+    if((status === 'part' || status === 'unpaid' || (method === 'Split' && balance > 0)) && balance > 0 && (email !== '' || mobile !== '')) {
         button.style.display = 'inline-flex';
     } else {
         button.style.display = 'none';

@@ -71,7 +71,7 @@ INSERT INTO products (name, category, price, quantity) VALUES
 
 -- Insert Sample User (Password: 123456)
 INSERT INTO users (name, mobile, email, password) VALUES
-('Admin User', '9876543210', 'admin@motijewellers.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
+('Admin User', '9876543210', 'admin@gourijewellers.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
 
 --Forgot password
 

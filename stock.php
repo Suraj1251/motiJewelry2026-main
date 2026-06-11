@@ -817,7 +817,10 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
 
                         <div class="mb-3">
                             <label>💎 Product Name</label>
-                            <input type="text" id="addProductName" name="name" placeholder="Enter product name" required class="jewel-input">
+                            <input list="productNameList" type="text" id="addProductName" name="name" placeholder="Enter product name or choose Others" required class="jewel-input" onchange="onAddProductNameChange()">
+                            <datalist id="productNameList">
+                                <option value="Others"></option>
+                            </datalist>
                         </div>
 
                         <div class="mb-3">
@@ -836,6 +839,9 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
                                 </optgroup>
                                 <optgroup label="💎 Diamond">
                                     <option value="Diamond">Diamond</option>
+                                </optgroup>
+                                <optgroup label="🟤 Other">
+                                    <option value="Other">Other</option>
                                 </optgroup>
                             </select>
                         </div>
@@ -1127,7 +1133,8 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
         'Gold 18K': ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Baby Ring','Bali','Pitaring','Other'],
         'Silver':   ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Tops','Ladies Ring','Gents Ring','Breslet','Tika','Loket','Mankha','Payal','Bichiya','Nosering','Baby Ring','Pat (Gross)','S- (Gross)','Nosepin (Gross)','Sankha','Pola','Other'],
         'Stone':    ['Natural Pearl','Gomed','Red Coral','Nila','Panna','Jerkon','Amethist','Cats Eye','Other'],
-        'Diamond':  ['Ladies Ring','Gents Ring','Tops','Mangal Sutra','Nose pin','Necklace','Other']
+        'Diamond':  ['Ladies Ring','Gents Ring','Tops','Mangal Sutra','Nose pin','Necklace','Other'],
+        'Other':    ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Shankha','Pala','Mala','Moti Mala','Trasel','Branch Fram','Braslate Pala','parl Mala','Gala','Reparing','Stamp Charg','Other']
     };
 
     function updateItemTypes(catSelectId, itemSelectId, customDivId) {
@@ -1158,6 +1165,17 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
             opt.textContent = item === 'Other' ? '➕ Other (Custom)' : item;
             itemSel.appendChild(opt);
         });
+    }
+
+    function onAddProductNameChange() {
+        const name = document.getElementById('addProductName').value.trim().toLowerCase();
+        if(name === 'others' || name === 'other') {
+            const categorySelect = document.getElementById('addCategorySelect');
+            if(categorySelect) {
+                categorySelect.value = 'Other';
+                updateItemTypes('addCategorySelect','addItemSelect','addCustomItem');
+            }
+        }
     }
 
     function toggleCustomItem(divId, value) {

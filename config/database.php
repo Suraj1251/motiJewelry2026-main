@@ -77,7 +77,7 @@
     $check_admin = mysqli_query($conn, "SELECT id FROM users WHERE mobile = '9876543210'");
     if(mysqli_num_rows($check_admin) == 0) {
         $hash = password_hash('123456', PASSWORD_DEFAULT);
-        mysqli_query($conn, "INSERT INTO users (name, mobile, email, password) VALUES ('Admin User', '9876543210', 'admin@motijewellers.com', '$hash')");
+        mysqli_query($conn, "INSERT INTO users (name, mobile, email, password) VALUES ('Admin User', '9876543210', 'admin@gourijewellers.com', '$hash')");
     }
 
     // Set session user if needed

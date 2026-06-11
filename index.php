@@ -4,6 +4,96 @@ require_once 'config/database.php';
 
 $is_logged_in = isset($_SESSION['user_id']);
 $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
+
+$daily_sales = [];
+$top_products = [];
+if($is_logged_in) {
+    for($i = 6; $i >= 0; $i--) {
+        $date = date('Y-m-d', strtotime("-$i days"));
+        $sales_query = mysqli_query($conn, "SELECT COALESCE(SUM(total_amount), 0) as total FROM invoices WHERE DATE(created_at) = '$date'");
+        $sales = mysqli_fetch_assoc($sales_query);
+        $daily_sales[] = [
+            'date' => date('d M', strtotime($date)),
+            'total' => $sales['total'] ?? 0
+        ];
+    }
+
+    $top_products_result = mysqli_query($conn, "SELECT p.name, SUM(ii.quantity) as sold FROM invoice_items ii JOIN products p ON ii.product_id = p.id GROUP BY ii.product_id ORDER BY sold DESC LIMIT 5");
+    while($row = mysqli_fetch_assoc($top_products_result)) {
+        $top_products[] = $row;
+    }
+
+    $monthly_sales = [];
+    $daily_invoice_counts = [];
+    for($m = 5; $m >= 0; $m--) {
+        $month = date('Y-m', strtotime("-$m months"));
+        $month_label = date('M', strtotime($month . '-01'));
+        $sales_query = mysqli_query($conn, "SELECT COALESCE(SUM(total_amount), 0) as total FROM invoices WHERE DATE_FORMAT(created_at, '%Y-%m') = '$month'");
+        $sales_row = mysqli_fetch_assoc($sales_query);
+        $monthly_sales[] = ['month' => $month_label, 'total' => $sales_row['total'] ?? 0];
+    }
+
+    for($i = 6; $i >= 0; $i--) {
+        $date = date('Y-m-d', strtotime("-$i days"));
+        $customer_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM customers WHERE DATE(created_at) = '$date'");
+        $customer_row = mysqli_fetch_assoc($customer_query);
+        $customer_growth[] = ['date' => date('d M', strtotime($date)), 'total' => $customer_row['total'] ?? 0];
+
+        $invoice_count_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM invoices WHERE DATE(created_at) = '$date'");
+        $invoice_count_row = mysqli_fetch_assoc($invoice_count_query);
+        $daily_invoice_counts[] = ['date' => date('d M', strtotime($date)), 'total' => $invoice_count_row['total'] ?? 0];
+    }
+
+    $invoice_pending_count_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) as total FROM invoices WHERE balance_amount > 0"));
+    $invoice_completed_count_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) as total FROM invoices WHERE COALESCE(balance_amount, 0) = 0"));
+    $invoice_pending_count = $invoice_pending_count_row['total'] ?? 0;
+    $invoice_completed_count = $invoice_completed_count_row['total'] ?? 0;
+
+    $category_sales = [];
+    $category_sales_result = mysqli_query($conn, "SELECT COALESCE(p.category, 'Other') as category, COALESCE(SUM(ii.total), 0) as revenue FROM invoice_items ii JOIN products p ON ii.product_id = p.id GROUP BY p.category ORDER BY revenue DESC LIMIT 6");
+    while($row = mysqli_fetch_assoc($category_sales_result)) {
+        $category_sales[] = $row;
+    }
+
+    $category_stock = [];
+    $category_stock_result = mysqli_query($conn, "SELECT COALESCE(category, 'Other') as category, COALESCE(SUM(quantity), 0) as total_qty FROM products GROUP BY category ORDER BY total_qty DESC LIMIT 6");
+    while($row = mysqli_fetch_assoc($category_stock_result)) {
+        $category_stock[] = $row;
+    }
+
+    $low_stock_items = [];
+    $low_stock_result = mysqli_query($conn, "SELECT name, quantity FROM products WHERE quantity <= 5 ORDER BY quantity ASC, name ASC LIMIT 5");
+    while($row = mysqli_fetch_assoc($low_stock_result)) {
+        $low_stock_items[] = $row;
+    }
+
+    $pending_invoices = [];
+    $pending_invoices_result = mysqli_query($conn, "SELECT invoice_no, customer_name, balance_amount FROM invoices WHERE balance_amount > 0 ORDER BY created_at DESC LIMIT 5");
+    while($row = mysqli_fetch_assoc($pending_invoices_result)) {
+        $pending_invoices[] = $row;
+    }
+
+    $current_month = date('Y-m');
+    $monthly_income_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(amount), 0) as total FROM income WHERE DATE_FORMAT(income_date, '%Y-%m') = '$current_month'"));
+    $monthly_expense_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE DATE_FORMAT(expense_date, '%Y-%m') = '$current_month'"));
+    $stock_items_count_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) as total FROM products"));
+    $stock_quantity_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(quantity), 0) as total FROM products"));
+    $stock_value_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(price * quantity), 0) as total FROM products"));
+    $customers_count_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) as total FROM customers"));
+    $total_income_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(amount), 0) as total FROM income"));
+    $total_expense_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(amount), 0) as total FROM expenses"));
+    $total_due_row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COALESCE(SUM(balance_amount), 0) as total FROM invoices WHERE balance_amount > 0"));
+
+    $monthly_income = $monthly_income_row['total'] ?? 0;
+    $monthly_expense = $monthly_expense_row['total'] ?? 0;
+    $stock_items_count = $stock_items_count_row['total'] ?? 0;
+    $stock_quantity = $stock_quantity_row['total'] ?? 0;
+    $stock_value = $stock_value_row['total'] ?? 0;
+    $customers_count = $customers_count_row['total'] ?? 0;
+    $total_income = $total_income_row['total'] ?? 0;
+    $total_expense = $total_expense_row['total'] ?? 0;
+    $total_due = $total_due_row['total'] ?? 0;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -327,6 +417,13 @@ $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
 
         /* ========== HERO ========== */
         .hero-with-logo { text-align: center; }
+        .dashboard-section { background: #fff; }
+        .dashboard-chart, .top-products-card { background: #fff; border: 1px solid rgba(181,115,14,0.15); border-radius: 20px; box-shadow: 0 16px 35px rgba(0,0,0,0.06); }
+        .dashboard-chart { padding: 24px; }
+        .top-products-card { padding: 24px; }
+        .dashboard-title { font-size: 1.1rem; font-weight: 700; color: #7a4e0a; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem; }
+        .top-products-card .top-product-item { padding: 14px 0; border-bottom: 1px solid rgba(181,115,14,0.12); }
+        .top-products-card .top-product-item:last-child { border-bottom: none; }
 
         .typing-text {
             background: linear-gradient(135deg, #800020, #c9a96e, #d68b16);
@@ -813,8 +910,9 @@ $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
 <!-- ========== PAGE WRAPPER ========== -->
 <div class="page-wrapper">
 
+<?php if(!$is_logged_in): ?>
 <!-- Hero Section -->
-<section class="hero-with-logo py-12 sm:py-16 md:py-20 relative" style="background:linear-gradient(135deg, #fdf6e3 0%, #f5ead0 50%, #fdf6e3 100%);">
+<section class="hero-with-logo py-8 sm:py-10 md:py-12 relative" style="background:linear-gradient(135deg, #fdf6e3 0%, #f5ead0 50%, #fdf6e3 100%);">
     <div class="container mx-auto px-4 sm:px-6 text-center">
         <div class="floating-logo mb-6">
             <?php
@@ -843,6 +941,192 @@ $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
         </div>
     </div>
 </section>
+<?php endif; ?>
+
+<?php if($is_logged_in): ?>
+<section class="py-8 sm:py-10 md:py-12" style="background: linear-gradient(135deg, #f8f1e4 0%, #fdf6e3 40%, #faf0d5 100%);">
+    <div class="container mx-auto px-4 sm:px-6">
+        <h2 class="text-3xl sm:text-4xl font-bold text-center mb-8" style="color:#7a4e0a;">Quick Business Dashboard</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div class="stat-gem p-6 bg-white shadow-xl border border-yellow-200">
+                <div class="text-4xl mb-4" style="color:#b87318;"><i class="fas fa-boxes"></i></div>
+                <h3 class="text-3xl font-bold"><?php echo number_format($stock_items_count); ?></h3>
+                <p class="uppercase tracking-wider mt-2">Stock Items</p>
+                <p class="text-sm text-gray-500 mt-2">Total unique products in inventory.</p>
+            </div>
+            <div class="stat-gem p-6 bg-white shadow-xl border border-amber-200">
+                <div class="text-4xl mb-4" style="color:#d68b16;"><i class="fas fa-weight-hanging"></i></div>
+                <h3 class="text-3xl font-bold"><?php echo number_format($stock_quantity); ?></h3>
+                <p class="uppercase tracking-wider mt-2">Stock Quantity</p>
+                <p class="text-sm text-gray-500 mt-2">Total quantity across all stock items.</p>
+            </div>
+            <div class="stat-gem p-6 bg-white shadow-xl border border-yellow-300">
+                <div class="text-4xl mb-4" style="color:#a16207;"><i class="fas fa-coins"></i></div>
+                <h3 class="text-3xl font-bold">₹<?php echo number_format($stock_value, 0); ?></h3>
+                <p class="uppercase tracking-wider mt-2">Stock Value</p>
+                <p class="text-sm text-gray-500 mt-2">Estimated total value of inventory.</p>
+            </div>
+            <div class="stat-gem p-6 bg-white shadow-xl border border-emerald-200">
+                <div class="text-4xl mb-4" style="color:#047857;"><i class="fas fa-users"></i></div>
+                <h3 class="text-3xl font-bold"><?php echo number_format($customers_count); ?></h3>
+                <p class="uppercase tracking-wider mt-2">Customers</p>
+                <p class="text-sm text-gray-500 mt-2">Total registered customer records.</p>
+            </div>
+            <div class="stat-gem p-6 bg-white shadow-xl border border-green-200">
+                <div class="text-4xl mb-4" style="color:#15803d;"><i class="fas fa-arrow-up-right-from-square"></i></div>
+                <h3 class="text-3xl font-bold">₹<?php echo number_format($total_income, 0); ?></h3>
+                <p class="uppercase tracking-wider mt-2">Total Income</p>
+                <p class="text-sm text-gray-500 mt-2">All recorded income to date.</p>
+            </div>
+            <div class="stat-gem p-6 bg-white shadow-xl border border-rose-200">
+                <div class="text-4xl mb-4" style="color:#b91c1c;"><i class="fas fa-wallet"></i></div>
+                <h3 class="text-3xl font-bold">₹<?php echo number_format($total_expense, 0); ?></h3>
+                <p class="uppercase tracking-wider mt-2">Total Expenses</p>
+                <p class="text-sm text-gray-500 mt-2">All recorded business expenses.</p>
+            </div>
+            <div class="stat-gem p-6 bg-white shadow-xl border border-orange-200">
+                <div class="text-4xl mb-4" style="color:#c2410c;"><i class="fas fa-calendar-check"></i></div>
+                <h3 class="text-3xl font-bold">₹<?php echo number_format($total_due, 0); ?></h3>
+                <p class="uppercase tracking-wider mt-2">Outstanding Due</p>
+                <p class="text-sm text-gray-500 mt-2">Total unpaid invoice balance.</p>
+            </div>
+            <div class="stat-gem p-6 bg-white shadow-xl border border-sky-200">
+                <div class="text-4xl mb-4" style="color:#0ea5e9;"><i class="fas fa-bell"></i></div>
+                <h3 class="text-3xl font-bold"><?php echo number_format($invoice_pending_count); ?></h3>
+                <p class="uppercase tracking-wider mt-2">Pending Invoices</p>
+                <p class="text-sm text-gray-500 mt-2">Invoices requiring payment follow-up.</p>
+            </div>
+            <div class="stat-gem p-6 bg-white shadow-xl border border-cyan-200">
+                <div class="text-4xl mb-4" style="color:#0891b2;"><i class="fas fa-calendar-alt"></i></div>
+                <h3 class="text-3xl font-bold">₹<?php echo number_format($monthly_income, 0); ?></h3>
+                <p class="uppercase tracking-wider mt-2">Monthly Income</p>
+                <p class="text-sm text-gray-500 mt-2">Income recorded this month.</p>
+            </div>
+        </div>
+    </div>
+</section>
+<section class="dashboard-section py-8 sm:py-10 md:py-12">
+    <div class="container mx-auto px-4 sm:px-6">
+        <div class="grid gap-6 lg:grid-cols-3 mb-8">
+            <div class="dashboard-chart lg:col-span-2">
+                <div class="dashboard-title"><i class="fas fa-chart-line"></i> Sales Last 7 Days</div>
+                <div style="min-height:280px;">
+                    <canvas id="salesChart" height="250"></canvas>
+                </div>
+            </div>
+            <div class="top-products-card">
+                <div class="dashboard-title"><i class="fas fa-star"></i> Top Products</div>
+                <div class="top-products-list">
+                    <?php if(empty($top_products)): ?>
+                        <p class="text-sm text-gray-500">No product sales available yet.</p>
+                    <?php else: ?>
+                        <?php foreach($top_products as $product): ?>
+                            <div class="top-product-item flex justify-between items-center">
+                                <span class="font-semibold text-sm"><?php echo htmlspecialchars($product['name']); ?></span>
+                                <span class="text-sm text-gray-600"><?php echo number_format($product['sold']); ?> sold</span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        <div class="dashboard-chart">
+            <div class="dashboard-title"><i class="fas fa-chart-pie"></i> Monthly Income vs Expenses</div>
+            <div style="min-height:280px; max-width:520px; margin:0 auto;">
+                <canvas id="incomeExpenseChart" height="250"></canvas>
+            </div>
+            <div class="mt-4 flex flex-wrap justify-center gap-3 text-sm text-gray-600">
+                <span class="px-3 py-2 rounded-full bg-green-50 text-green-700">Income: ₹<?php echo number_format($monthly_income, 2); ?></span>
+                <span class="px-3 py-2 rounded-full bg-red-50 text-red-700">Expenses: ₹<?php echo number_format($monthly_expense, 2); ?></span>
+            </div>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-2 mt-8">
+            <div class="dashboard-chart">
+                <div class="dashboard-title"><i class="fas fa-chart-bar"></i> Monthly Sales Trend</div>
+                <div style="min-height:280px; max-width:520px; margin:0 auto;">
+                    <canvas id="monthlySalesChart" height="250"></canvas>
+                </div>
+            </div>
+            <div class="dashboard-chart">
+                <div class="dashboard-title"><i class="fas fa-user-plus"></i> Customer Growth</div>
+                <div style="min-height:280px;">
+                    <canvas id="customerTrendChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-2 mt-8">
+            <div class="dashboard-chart">
+                <div class="dashboard-title"><i class="fas fa-file-invoice"></i> Invoice Completion Rate</div>
+                <div style="min-height:280px; max-width:520px; margin:0 auto;">
+                    <canvas id="invoiceCompletionChart" height="250"></canvas>
+                </div>
+            </div>
+            <div class="dashboard-chart">
+                <div class="dashboard-title"><i class="fas fa-chart-pie"></i> Sales by Category</div>
+                <div style="min-height:280px; max-width:520px; margin:0 auto;">
+                    <canvas id="categorySalesChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-2 mt-8">
+            <div class="dashboard-chart">
+                <div class="dashboard-title"><i class="fas fa-file-invoice"></i> Invoice Count Last 7 Days</div>
+                <div style="min-height:280px; max-width:520px; margin:0 auto;">
+                    <canvas id="invoiceCountChart" height="250"></canvas>
+                </div>
+            </div>
+            <div class="dashboard-chart">
+                <div class="dashboard-title"><i class="fas fa-boxes"></i> Stock Quantity by Category</div>
+                <div style="min-height:280px; max-width:520px; margin:0 auto;">
+                    <canvas id="categoryStockChart" height="250"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-2 mt-8">
+            <div class="dashboard-chart p-6">
+                <div class="dashboard-title"><i class="fas fa-exclamation-triangle"></i> Low Stock Alerts</div>
+                <?php if(empty($low_stock_items)): ?>
+                    <p class="text-sm text-gray-500">No low-stock products currently.</p>
+                <?php else: ?>
+                    <ul class="space-y-3 mt-4">
+                        <?php foreach($low_stock_items as $item): ?>
+                            <li class="flex justify-between items-center border border-gray-100 rounded-xl p-3">
+                                <span class="font-medium"><?php echo htmlspecialchars($item['name']); ?></span>
+                                <span class="text-sm text-red-600 font-semibold"><?php echo number_format($item['quantity']); ?> pcs</span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+
+            <div class="dashboard-chart p-6">
+                <div class="dashboard-title"><i class="fas fa-file-invoice-dollar"></i> Pending Invoices</div>
+                <?php if(empty($pending_invoices)): ?>
+                    <p class="text-sm text-gray-500">No pending invoices at the moment.</p>
+                <?php else: ?>
+                    <ul class="space-y-3 mt-4">
+                        <?php foreach($pending_invoices as $invoice): ?>
+                            <li class="border border-gray-100 rounded-xl p-3">
+                                <div class="flex justify-between items-start gap-3">
+                                    <div>
+                                        <p class="font-semibold"><?php echo htmlspecialchars($invoice['invoice_no']); ?></p>
+                                        <p class="text-sm text-gray-500"><?php echo htmlspecialchars($invoice['customer_name']); ?></p>
+                                    </div>
+                                    <span class="text-sm text-orange-700 font-semibold">₹<?php echo number_format($invoice['balance_amount'], 2); ?></span>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</section>
+<?php endif; ?>
 
 <!-- Stats Section -->
 <div class="container mx-auto px-4 sm:px-6 py-8">
@@ -953,12 +1237,241 @@ $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
 
 </div><!-- end .page-wrapper -->
 
-<style>
-/* Mobile nav margin fix */
-@media (max-width: 768px) {
-    nav.nav-gold { margin-left: 0 !important; }
-}
-</style>
+<?php if($is_logged_in): ?>
+<script>
+    const salesLabels = <?php echo json_encode(array_column($daily_sales, 'date')); ?>;
+    const salesValues = <?php echo json_encode(array_column($daily_sales, 'total')); ?>;
+    const salesCtx = document.getElementById('salesChart');
+    if(salesCtx) {
+        new Chart(salesCtx, {
+            type: 'line',
+            data: {
+                labels: salesLabels,
+                datasets: [{
+                    label: 'Sales',
+                    data: salesValues,
+                    backgroundColor: 'rgba(214,139,22,0.12)',
+                    borderColor: '#b5730e',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#d68b16',
+                    pointRadius: 4,
+                    fill: true,
+                    tension: 0.35
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) { return '₹' + value.toLocaleString(); }
+                        }
+                    },
+                    x: {
+                        grid: { display: false }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    }
 
-</body>
+        const incomeExpenseCtx = document.getElementById('incomeExpenseChart');
+        if(incomeExpenseCtx) {
+            new Chart(incomeExpenseCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Income', 'Expenses'],
+                    datasets: [{
+                        data: [<?php echo json_encode($monthly_income); ?>, <?php echo json_encode($monthly_expense); ?>],
+                        backgroundColor: ['#16a34a', '#dc2626'],
+                        borderColor: ['#ffffff', '#ffffff'],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { boxWidth: 12, padding: 16 }
+                        }
+                    }
+                }
+            });
+        }
+
+        const monthlySalesCtx = document.getElementById('monthlySalesChart');
+        if(monthlySalesCtx) {
+            new Chart(monthlySalesCtx, {
+                type: 'bar',
+                data: {
+                    labels: <?php echo json_encode(array_column($monthly_sales, 'month')); ?>,
+                    datasets: [{
+                        label: 'Sales',
+                        data: <?php echo json_encode(array_column($monthly_sales, 'total')); ?>,
+                        backgroundColor: ['#2563eb', '#4f46e5', '#ec4899', '#f59e0b', '#10b981', '#ef4444'],
+                        borderColor: '#1d4ed8',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: function(value) { return '₹' + value.toLocaleString(); } } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        const customerTrendCtx = document.getElementById('customerTrendChart');
+        if(customerTrendCtx) {
+            new Chart(customerTrendCtx, {
+                type: 'line',
+                data: {
+                    labels: <?php echo json_encode(array_column($customer_growth, 'date')); ?>,
+                    datasets: [{
+                        label: 'New Customers',
+                        data: <?php echo json_encode(array_column($customer_growth, 'total')); ?>,
+                        backgroundColor: 'rgba(16,185,129,0.12)',
+                        borderColor: '#059669',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#10b981',
+                        pointRadius: 4,
+                        tension: 0.35,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { precision: 0 } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        const invoiceCompletionCtx = document.getElementById('invoiceCompletionChart');
+        if(invoiceCompletionCtx) {
+            new Chart(invoiceCompletionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Completed', 'Pending'],
+                    datasets: [{
+                        data: [<?php echo json_encode($invoice_completed_count); ?>, <?php echo json_encode($invoice_pending_count); ?>],
+                        backgroundColor: ['#14b8a6', '#f97316'],
+                        borderColor: ['#ffffff', '#ffffff'],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 16 } }
+                    }
+                }
+            });
+        }
+
+        const categorySalesCtx = document.getElementById('categorySalesChart');
+        if(categorySalesCtx) {
+            new Chart(categorySalesCtx, {
+                type: 'polarArea',
+                data: {
+                    labels: <?php echo json_encode(array_column($category_sales, 'category')); ?>,
+                    datasets: [{
+                        data: <?php echo json_encode(array_map(function($row){ return (float)$row['revenue']; }, $category_sales)); ?>,
+                        backgroundColor: ['#e11d48', '#6366f1', '#22c55e', '#f59e0b', '#0ea5e9', '#8b5cf6'],
+                        borderColor: '#ffffff',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 16 } }
+                    }
+                }
+            });
+        }
+
+        const invoiceCountCtx = document.getElementById('invoiceCountChart');
+        if(invoiceCountCtx) {
+            new Chart(invoiceCountCtx, {
+                type: 'line',
+                data: {
+                    labels: <?php echo json_encode(array_column($daily_invoice_counts, 'date')); ?>,
+                    datasets: [{
+                        label: 'Invoices',
+                        data: <?php echo json_encode(array_column($daily_invoice_counts, 'total')); ?>,
+                        backgroundColor: 'rgba(14,165,233,0.08)',
+                        borderColor: '#0ea5e9',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#ffffff',
+                        pointBorderColor: '#0ea5e9',
+                        pointRadius: 5,
+                        pointStyle: 'rectRot',
+                        stepped: 'middle',
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { precision: 0 } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        const categoryStockCtx = document.getElementById('categoryStockChart');
+        if(categoryStockCtx) {
+            new Chart(categoryStockCtx, {
+                type: 'line',
+                data: {
+                    labels: <?php echo json_encode(array_column($category_stock, 'category')); ?>,
+                    datasets: [{
+                        label: 'Stock Quantity',
+                        data: <?php echo json_encode(array_map(function($row){ return (float)$row['total_qty']; }, $category_stock)); ?>,
+                        backgroundColor: 'rgba(59,130,246,0.12)',
+                        borderColor: '#2563EB',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#2563EB',
+                        pointBorderColor: '#ffffff',
+                        pointRadius: 4,
+                        tension: 0.35,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { precision: 0 } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+    </script>
+    <?php endif; ?>
 </html>
