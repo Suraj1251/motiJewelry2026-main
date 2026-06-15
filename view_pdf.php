@@ -13,7 +13,7 @@ if(!$invoice_no) { die("Invoice number missing."); }
 // Fetch invoice
 $inv_res = mysqli_query($conn, "SELECT * FROM invoices WHERE invoice_no = '$invoice_no'");
 if(!$inv_res || mysqli_num_rows($inv_res) == 0) {
-    die("<h3 style='font-family:sans-serif;padding:20px;'>Invoice not found: ".htmlspecialchars($invoice_no)."</h3><a href='reports.php'>← Back to Reports</a>");
+    die("<h3 style='font-family:sans-serif;padding:20px;'>Invoice not found: ".htmlspecialchars($invoice_no)."</h3><a href='reports.php'><i class='fas fa-arrow-left mr-1'></i> Back to Reports</a>");
 }
 $inv = mysqli_fetch_assoc($inv_res);
 
@@ -136,7 +136,7 @@ table.items tfoot td.r{text-align:right;font-weight:700;}
 </head>
 <body>
 <div class="print-bar">
-    <a href="reports.php" class="btn-b">← Back to Reports</a>
+    <a href="reports.php" class="btn-b"><i class="fas fa-arrow-left mr-1"></i> Back to Reports</a>
     <button class="btn-p" onclick="window.print()">🖨️ Print / Save PDF</button>
 </div>
 <div class="page">

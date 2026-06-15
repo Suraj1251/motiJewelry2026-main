@@ -49,7 +49,14 @@ function sendSMTPMail($to, $subject, $message) {
         $mail->Port       = SMTP_PORT;
         $mail->SMTPDebug  = SMTP_DEBUG;
 
-        $mail->setFrom(MAIL_FROM_ADDRESS, MAIL_FROM_NAME);
+        $fromAddress = SMTP_USERNAME;
+        if(empty($fromAddress) || !filter_var($fromAddress, FILTER_VALIDATE_EMAIL)) {
+            $fromAddress = MAIL_FROM_ADDRESS;
+        }
+        $mail->setFrom($fromAddress, MAIL_FROM_NAME);
+        if($fromAddress !== MAIL_FROM_ADDRESS && filter_var(MAIL_FROM_ADDRESS, FILTER_VALIDATE_EMAIL)) {
+            $mail->addReplyTo(MAIL_FROM_ADDRESS, MAIL_FROM_NAME);
+        }
         $mail->addAddress($to);
         $mail->isHTML(true);
         $mail->Subject = $subject;

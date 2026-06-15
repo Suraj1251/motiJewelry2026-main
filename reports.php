@@ -50,11 +50,11 @@ $gst_month = mysqli_real_escape_string($conn, $_GET['gst_month'] ?? date('Y-m'))
 $gst_month_where = $gst_month ? "WHERE DATE_FORMAT(created_at,'%Y-%m') = '$gst_month'" : '';
 $gst_summary = mysqli_fetch_assoc(mysqli_query($conn, "
     SELECT
-        SUM(CASE WHEN gst_type='gst'  THEN 1 ELSE 0 END) as gst_count,
-        SUM(CASE WHEN gst_type!='gst' THEN 1 ELSE 0 END) as nongst_count,
-        SUM(CASE WHEN gst_type='gst'  THEN total_amount ELSE 0 END) as gst_taxable_total,
-        SUM(CASE WHEN gst_type!='gst' THEN total_amount ELSE 0 END) as nongst_amt,
-        SUM(CASE WHEN gst_type='gst'  THEN gst_amount   ELSE 0 END) as actual_gst_collected
+        SUM(CASE WHEN gst_type LIKE 'gst%'  THEN 1 ELSE 0 END) as gst_count,
+        SUM(CASE WHEN gst_type NOT LIKE 'gst%' THEN 1 ELSE 0 END) as nongst_count,
+        SUM(CASE WHEN gst_type LIKE 'gst%'  THEN total_amount ELSE 0 END) as gst_taxable_total,
+        SUM(CASE WHEN gst_type NOT LIKE 'gst%' THEN total_amount ELSE 0 END) as nongst_amt,
+        SUM(CASE WHEN gst_type LIKE 'gst%'  THEN gst_amount   ELSE 0 END) as actual_gst_collected
     FROM invoices $gst_month_where
 "));
 
@@ -70,8 +70,8 @@ if($filter_from)   $where_clauses[] = "DATE(created_at) >= '$filter_from'";
 if($filter_to)     $where_clauses[] = "DATE(created_at) <= '$filter_to'";
 if($filter_name)   $where_clauses[] = "(customer_name LIKE '%$filter_name%' OR customer_mobile LIKE '%$filter_name%')";
 if($filter_status) $where_clauses[] = "payment_status = '$filter_status'";
-if($filter_gst === 'gst')     $where_clauses[] = "gst_type = 'gst'";
-if($filter_gst === 'non_gst') $where_clauses[] = "gst_type != 'gst'";
+if($filter_gst === 'gst')     $where_clauses[] = "gst_type LIKE 'gst%'";
+if($filter_gst === 'non_gst') $where_clauses[] = "gst_type NOT LIKE 'gst%'";
 $where_sql = $where_clauses ? 'WHERE ' . implode(' AND ', $where_clauses) : '';
 
 // customer_gstin column exists directly in invoices table
@@ -339,39 +339,15 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
 
     <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(214,139,22,0.015) 3px,rgba(214,139,22,0.015) 4px);pointer-events:none;z-index:1;"></div>
 
-    <div style="position:absolute;top:28px;left:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite;">✦</div>
-    <div style="position:absolute;top:28px;right:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 1s;">✦</div>
-    <div style="position:absolute;bottom:28px;left:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 2s;">✦</div>
-    <div style="position:absolute;bottom:28px;right:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 3s;">✦</div>
+    <!-- background diamonds removed to keep only central gem -->
 
     <div id="loaderStars" style="position:absolute;inset:0;pointer-events:none;z-index:2;"></div>
     <div id="loaderRings" style="position:absolute;inset:0;pointer-events:none;z-index:2;display:flex;align-items:center;justify-content:center;"></div>
 
     <div style="position:relative;z-index:10;text-align:center;">
-        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;">
-            <div style="position:absolute;inset:-12px;border-radius:50%;border:2px solid rgba(214,139,22,0.4);animation:haloPulse 1.5s ease-in-out infinite;"></div>
-            <div style="position:absolute;inset:-24px;border-radius:50%;border:1px solid rgba(214,139,22,0.2);animation:haloPulse 1.5s ease-in-out infinite 0.5s;"></div>
-            <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="width:90px;height:90px;position:absolute;top:10px;left:10px;animation:gemGlowPulse 2s ease-in-out infinite;">
-                <defs>
-                    <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#ff9900"/>
-                        <stop offset="45%" style="stop-color:#d68b16"/>
-                        <stop offset="100%" style="stop-color:#800020"/>
-                    </linearGradient>
-                    <linearGradient id="lg2" x1="100%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" style="stop-color:#f5c842;stop-opacity:0.9"/>
-                        <stop offset="100%" style="stop-color:#b5730e;stop-opacity:0.9"/>
-                    </linearGradient>
-                </defs>
-                <polygon points="40,2 76,22 76,58 40,78 4,58 4,22" fill="url(#lg1)" stroke="#f5c842" stroke-width="1.5"/>
-                <polygon points="40,2 76,22 40,40" fill="url(#lg2)" opacity="0.7"/>
-                <polygon points="76,22 76,58 40,40" fill="#800020" opacity="0.5"/>
-                <polygon points="76,58 40,78 40,40" fill="#b5730e" opacity="0.6"/>
-                <polygon points="40,78 4,58 40,40" fill="#d68b16" opacity="0.4"/>
-                <polygon points="4,58 4,22 40,40" fill="#ff9900" opacity="0.35"/>
-                <polygon points="4,22 40,2 40,40" fill="url(#lg2)" opacity="0.55"/>
-                <polygon points="40,14 68,28 68,52 40,66 12,52 12,28" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="0.8"/>
-            </svg>
+        <!-- Logo -->
+        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;display:flex;align-items:center;justify-content:center;">
+            <img src="assets/images/moti-removebg-preview.png" alt="Logo" style="max-width:100%;max-height:100%;animation:gemGlowPulse 2s ease-in-out infinite;">
         </div>
 
         <div style="color:#d68b16;font-size:22px;letter-spacing:6px;font-family:'Playfair Display',serif;margin-bottom:6px;animation:titleGold 2s ease infinite alternate;">MAA GOURI JEWELLERS</div>
@@ -474,6 +450,9 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
     <div class="page-heading">
         <h1 class="gold-font"><i class="fas fa-chart-bar mr-2"></i> Business Reports</h1>
         <p>Sales analytics, payment status &amp; GST summary</p>
+        <div style="margin-top:10px;">
+            <a href="due_list.php" class="btn-gold px-4 py-2 rounded-lg" style="background:#d68b16;color:#fff;text-decoration:none;">Due List</a>
+        </div>
     </div>
 
     <div class="container mx-auto px-4 sm:px-6 py-6">
@@ -803,7 +782,7 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
                             <th>Mobile</th>
                             <th class="text-right">Amount (₹)</th>
                             <th class="text-right">Paid</th>
-                            <th class="text-right">Balance</th>
+                            <th class="text-right">Due</th>
                             <th class="text-center">GST</th>
                             <th class="text-center">Status</th>
                             <th class="text-center">Date</th>
@@ -846,7 +825,7 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
                             <?php echo $balance>0 ? '₹'.number_format($balance,2) : '—'; ?>
                         </td>
                         <td class="text-center">
-                            <?php if($bill['gst_type']==='gst'): ?>
+                            <?php if(strpos($bill['gst_type'], 'gst') === 0): ?>
                                 <span style="color:#0d9488;font-weight:700;font-size:11px;">📄 GST</span>
                                 <?php if($gst_amt>0): ?>
                                     <div style="font-size:9px;color:#14b8a6;">Total: ₹<?php echo number_format($gst_amt,2); ?></div>

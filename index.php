@@ -702,11 +702,7 @@ if($is_logged_in) {
     <!-- Scanlines texture -->
     <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(214,139,22,0.015) 3px,rgba(214,139,22,0.015) 4px);pointer-events:none;z-index:1;"></div>
 
-    <!-- Corner ornaments -->
-    <div style="position:absolute;top:28px;left:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite;">✦</div>
-    <div style="position:absolute;top:28px;right:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 1s;">✦</div>
-    <div style="position:absolute;bottom:28px;left:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 2s;">✦</div>
-    <div style="position:absolute;bottom:28px;right:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 3s;">✦</div>
+    <!-- background diamonds removed to keep only central gem -->
 
     <!-- Stars / sparkles container -->
     <div id="loaderStars" style="position:absolute;inset:0;pointer-events:none;z-index:2;"></div>
@@ -717,31 +713,9 @@ if($is_logged_in) {
     <!-- Center content -->
     <div style="position:relative;z-index:10;text-align:center;">
 
-        <!-- Gem with halos -->
-        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;">
-            <div style="position:absolute;inset:-12px;border-radius:50%;border:2px solid rgba(214,139,22,0.4);animation:haloPulse 1.5s ease-in-out infinite;"></div>
-            <div style="position:absolute;inset:-24px;border-radius:50%;border:1px solid rgba(214,139,22,0.2);animation:haloPulse 1.5s ease-in-out infinite 0.5s;"></div>
-            <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="width:90px;height:90px;position:absolute;top:10px;left:10px;animation:gemGlowPulse 2s ease-in-out infinite;">
-                <defs>
-                    <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" style="stop-color:#ff9900"/>
-                        <stop offset="45%" style="stop-color:#d68b16"/>
-                        <stop offset="100%" style="stop-color:#800020"/>
-                    </linearGradient>
-                    <linearGradient id="lg2" x1="100%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" style="stop-color:#f5c842;stop-opacity:0.9"/>
-                        <stop offset="100%" style="stop-color:#b5730e;stop-opacity:0.9"/>
-                    </linearGradient>
-                </defs>
-                <polygon points="40,2 76,22 76,58 40,78 4,58 4,22" fill="url(#lg1)" stroke="#f5c842" stroke-width="1.5"/>
-                <polygon points="40,2 76,22 40,40" fill="url(#lg2)" opacity="0.7"/>
-                <polygon points="76,22 76,58 40,40" fill="#800020" opacity="0.5"/>
-                <polygon points="76,58 40,78 40,40" fill="#b5730e" opacity="0.6"/>
-                <polygon points="40,78 4,58 40,40" fill="#d68b16" opacity="0.4"/>
-                <polygon points="4,58 4,22 40,40" fill="#ff9900" opacity="0.35"/>
-                <polygon points="4,22 40,2 40,40" fill="url(#lg2)" opacity="0.55"/>
-                <polygon points="40,14 68,28 68,52 40,66 12,52 12,28" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="0.8"/>
-            </svg>
+        <!-- Logo -->
+        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;display:flex;align-items:center;justify-content:center;">
+            <img src="assets/images/moti-removebg-preview.png" alt="Logo" style="max-width:100%;max-height:100%;animation:gemGlowPulse 2s ease-in-out infinite;">
         </div>
 
         <!-- Title -->

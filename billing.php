@@ -130,7 +130,17 @@ if($chk_cash && mysqli_num_rows($chk_cash) == 0) {
     mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN upi_paid DECIMAL(10,2) DEFAULT 0");
 }
 
-// Add account_paid column (for NEFT) if not exists
+// Add account_paid and due_date columns if not exists
+$chk_account_paid = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'account_paid'");
+if($chk_account_paid && mysqli_num_rows($chk_account_paid) == 0) {
+    mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN account_paid DECIMAL(10,2) DEFAULT 0");
+}
+// Add round_off column if missing so printed invoices show rounded amount
+$chk_round = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'round_off'");
+if($chk_round && mysqli_num_rows($chk_round) == 0) {
+    mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN round_off DECIMAL(10,2) DEFAULT 0");
+}
+
 $chk_due_date = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'due_date'");
 if($chk_due_date && mysqli_num_rows($chk_due_date) == 0) {
     mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN due_date DATE NULL");
@@ -192,6 +202,7 @@ $last_balance_amount = 0;
 $last_payment_method = 'Cash';
 $last_cash_paid = 0;
 $last_upi_paid = 0;
+$last_account_paid = 0;
 $last_is_split = 0;
 
 $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-preview.png','moti-removebg-preview.png'];
@@ -279,12 +290,15 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
     if ($is_split) {
         $payment_method = 'Cash+UPI';
         $paid_amount    = $cash_paid + $upi_paid;
-        if ($paid_amount < $total_amount) {
-            if ($paid_amount > 0) {
-                $payment_status = 'part';
-            } else {
-                $payment_status = 'unpaid';
-            }
+    }
+
+    if (!$is_split) {
+        if (strtoupper($payment_method) === 'CASH') {
+            $cash_paid = $paid_amount;
+        } elseif (strtoupper($payment_method) === 'UPI') {
+            $upi_paid = $paid_amount;
+        } elseif (strtoupper($payment_method) === 'NEFT') {
+            $account_paid = $paid_amount;
         }
     }
 
@@ -343,6 +357,16 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
         mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN payment_method VARCHAR(20) DEFAULT 'Cash'");
     }
 
+    if ($is_split) {
+        if ($paid_amount < $total_amount) {
+            if ($paid_amount > 0) {
+                $payment_status = 'part';
+            } else {
+                $payment_status = 'unpaid';
+            }
+        }
+    }
+
     $balance_amount = ($payment_status === 'paid') ? 0 : ($total_amount - $paid_amount);
     if($payment_status === 'paid') $paid_amount = $total_amount;
 
@@ -351,8 +375,8 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
         $balance_amount = 0;
     }
 
-    $invoice_query = "INSERT INTO invoices (invoice_no, customer_name, customer_mobile, customer_address, customer_gstin, gst_type, subtotal, gst_amount, total_amount, payment_status, payment_method, paid_amount, balance_amount, cash_paid, upi_paid, account_paid, due_date, created_by)
-              VALUES ('$invoice_no', '$customer_name', '$customer_mobile', '$customer_address', '$customer_gstin', '$gst_type', $subtotal, $gst_amount, $total_amount, '$payment_status', '$payment_method', $paid_amount, $balance_amount, $cash_paid, $upi_paid, $account_paid, $due_date, $created_by)";
+    $invoice_query = "INSERT INTO invoices (invoice_no, customer_name, customer_mobile, customer_address, customer_gstin, gst_type, subtotal, gst_amount, total_amount, round_off, payment_status, payment_method, paid_amount, balance_amount, cash_paid, upi_paid, account_paid, due_date, created_by)
+              VALUES ('$invoice_no', '$customer_name', '$customer_mobile', '$customer_address', '$customer_gstin', '$gst_type', $subtotal, $gst_amount, $total_amount, $round_off, '$payment_status', '$payment_method', $paid_amount, $balance_amount, $cash_paid, $upi_paid, $account_paid, $due_date, $created_by)";
     if(mysqli_query($conn, $invoice_query)) {
         $invoice_id = mysqli_insert_id($conn);
         $items = json_decode($_POST['items'], true);
@@ -422,6 +446,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
         $last_balance_amount   = $balance_amount;
         $last_cash_paid        = $cash_paid;
         $last_upi_paid         = $upi_paid;
+        $last_account_paid     = $account_paid;
         $last_is_split         = $is_split;
     } else {
         $error = "&#10007; Error: " . mysqli_error($conn);
@@ -565,10 +590,23 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
         .jewel-sparkle { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; animation: sparkleFloat linear infinite; }
         @keyframes sparkleFloat { 0%{transform:translateY(100vh) scale(0);opacity:0} 10%{opacity:1} 90%{opacity:0.5} 100%{transform:translateY(-10vh) scale(1);opacity:0} }
 
+        @page { size: A4 portrait; margin: 8mm; }
         @media print {
+            html, body { width: 210mm; min-height: 297mm; margin: 0; padding: 0; }
             body * { visibility: hidden; }
             .print-invoice, .print-invoice * { visibility: visible; }
-            .print-invoice { position: absolute; left: 0; top: 0; width: 100%; }
+            .print-invoice { position: relative; left: auto; top: auto; width: auto; max-width: 210mm; margin: 0; padding: 0; }
+            .print-invoice > div { width: 100%; max-width: 210mm; }
+            .print-invoice { page-break-inside: avoid !important; }
+            .print-invoice * { page-break-inside: avoid !important; }
+            .print-invoice { page-break-after: avoid !important; }
+            .print-invoice { break-inside: avoid !important; }
+            .print-invoice { overflow: visible !important; }
+            .print-invoice { box-shadow: none !important; }
+            .print-invoice { background: #fff !important; }
+            .print-invoice table { font-size: 9.5px !important; }
+            .print-invoice th, .print-invoice td { padding: 4px 6px !important; }
+            .print-invoice .print-invoice { margin: 0 !important; }
             .no-print { display: none !important; }
             .sidebar, .sidebar-overlay, nav.nav-gold { display: none !important; }
         }
@@ -618,27 +656,11 @@ window.addEventListener('load', function() {
 
 <!-- Loading Overlay -->
 <div id="loadingOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;justify-content:center;align-items:center;overflow:hidden;transition:opacity 0.6s ease,visibility 0.6s ease;background:radial-gradient(ellipse at 50% 60%, #1a0a00 0%, #0d0500 100%);">
-    <div style="position:absolute;top:28px;left:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite;">&#10022;</div>
-    <div style="position:absolute;top:28px;right:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 1s;">&#10022;</div>
-    <div style="position:absolute;bottom:28px;left:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 2s;">&#10022;</div>
-    <div style="position:absolute;bottom:28px;right:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 3s;">&#10022;</div>
+    <!-- background diamonds removed to keep only central gem -->
     <div style="position:relative;z-index:10;text-align:center;">
-        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;">
-            <div style="position:absolute;inset:-12px;border-radius:50%;border:2px solid rgba(214,139,22,0.4);animation:haloPulse 1.5s ease-in-out infinite;"></div>
-            <div style="position:absolute;inset:-24px;border-radius:50%;border:1px solid rgba(214,139,22,0.2);animation:haloPulse 1.5s ease-in-out infinite 0.5s;"></div>
-            <svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="width:90px;height:90px;position:absolute;top:10px;left:10px;animation:gemGlowPulse 2s ease-in-out infinite;">
-                <defs>
-                    <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#ff9900"/><stop offset="45%" style="stop-color:#d68b16"/><stop offset="100%" style="stop-color:#800020"/></linearGradient>
-                    <linearGradient id="lg2" x1="100%" y1="0%" x2="0%" y2="100%"><stop offset="0%" style="stop-color:#f5c842;stop-opacity:0.9"/><stop offset="100%" style="stop-color:#b5730e;stop-opacity:0.9"/></linearGradient>
-                </defs>
-                <polygon points="40,2 76,22 76,58 40,78 4,58 4,22" fill="url(#lg1)" stroke="#f5c842" stroke-width="1.5"/>
-                <polygon points="40,2 76,22 40,40" fill="url(#lg2)" opacity="0.7"/>
-                <polygon points="76,22 76,58 40,40" fill="#800020" opacity="0.5"/>
-                <polygon points="76,58 40,78 40,40" fill="#b5730e" opacity="0.6"/>
-                <polygon points="40,78 4,58 40,40" fill="#d68b16" opacity="0.4"/>
-                <polygon points="4,58 4,22 40,40" fill="#ff9900" opacity="0.35"/>
-                <polygon points="4,22 40,2 40,40" fill="url(#lg2)" opacity="0.55"/>
-            </svg>
+        <!-- Logo -->
+        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;display:flex;align-items:center;justify-content:center;">
+            <img src="assets/images/moti-removebg-preview.png" alt="Logo" style="max-width:100%;max-height:100%;animation:gemGlowPulse 2s ease-in-out infinite;">
         </div>
         <div style="color:#d68b16;font-size:22px;letter-spacing:6px;font-family:'Playfair Display',serif;margin-bottom:6px;animation:titleGold 2s ease infinite alternate;">MAA GOURI JEWELLERS</div>
         <p style="color:rgba(201,169,110,0.7);font-size:10px;letter-spacing:4px;text-transform:uppercase;margin-bottom:24px;">Crafting Timeless Elegance</p>
@@ -1444,238 +1466,166 @@ window.addEventListener('load', function() {
 
 <!-- PRINT INVOICE -->
 <?php if(!empty($success) && !empty($last_invoice_no) && $last_total > 0): ?>
+<?php
+// Ensure we have latest stored payment values for the printed invoice
+if(!empty($last_invoice_no)) {
+    $inv_no_esc = mysqli_real_escape_string($conn, $last_invoice_no);
+    $invRes = mysqli_query($conn, "SELECT cash_paid, upi_paid, account_paid, round_off, balance_amount, due_date, payment_method, paid_amount, total_amount FROM invoices WHERE invoice_no = '$inv_no_esc' LIMIT 1");
+    if($invRes && mysqli_num_rows($invRes) > 0) {
+        $invRow = mysqli_fetch_assoc($invRes);
+        $last_cash_paid = floatval($invRow['cash_paid'] ?? $last_cash_paid);
+        $last_upi_paid = floatval($invRow['upi_paid'] ?? $last_upi_paid);
+        $last_account_paid = floatval($invRow['account_paid'] ?? $last_account_paid);
+        $last_round_off = floatval($invRow['round_off'] ?? $last_round_off);
+        $last_balance_amount = floatval($invRow['balance_amount'] ?? $last_balance_amount);
+        $last_due_date = !empty($invRow['due_date']) ? $invRow['due_date'] : '';
+        $last_payment_method = $invRow['payment_method'] ?? $last_payment_method;
+        $last_paid_amount = floatval($invRow['paid_amount'] ?? $last_paid_amount);
+        $last_total = floatval($invRow['total_amount'] ?? $last_total);
+    }
+}
+?>
 <div class="print-invoice" style="display:block;">
-    <div style="max-width:800px;margin:0 auto;background:#fff;font-family:Arial,sans-serif;border:1px solid #888;padding:24px 28px;position:relative;overflow:hidden;color:#000;">
-        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.15;pointer-events:none;z-index:1;text-align:center;width:100%;">
-            <?php foreach($logo_paths as $lp) { if(file_exists($lp)) { echo '<img src="'.$lp.'" style="max-width:500px;max-height:500px;">'; break; } } ?>
-        </div>
-        <div style="position:relative;z-index:5;">
-            <div style="text-align:center;font-size:10px;margin-bottom:2px;">SUBJECT TO PASCHIM MEDINIPUR JURISDICTION</div>
-            <div style="text-align:center;font-size:10px;font-style:italic;margin-bottom:10px;">(TRIPLICATE FOR SUPPLIER)</div>
-            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:8px;">
-                <div><strong>Invoice No.</strong> <?php echo htmlspecialchars($last_invoice_no); ?><br><strong>Ref. No.</strong></div>
-                <div style="text-align:right;"><strong>Dated</strong> <?php echo date('d-M-y'); ?><br>
-                    <?php if($last_payment_status === 'paid'): ?><div style="border:2px solid #16a34a;border-radius:4px;padding:2px 8px;display:inline-block;margin-top:2px;"><div style="color:#16a34a;font-size:9px;font-weight:900;">&#10003; PAID</div></div><?php endif; ?>
+    <div style="max-width:840px;margin:0 auto;background:#fff7d6;border:1px solid #d8b34f;border-radius:10px;overflow:hidden;font-family:Georgia, 'Times New Roman', serif;color:#231807;position:relative;padding:16px 18px;">
+        <div style="position:relative;z-index:2;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px;text-align:center;">
+                <div style="width:100%;padding:18px 20px;border-radius:14px;background:linear-gradient(135deg,#ffef7a,#f7df7a);border:1px solid #b07b00;box-shadow:0 6px 18px rgba(0,0,0,0.12);">
+                    <div style="font-size:32px;font-weight:900;color:#6b4a08;letter-spacing:2px;text-transform:uppercase;line-height:1.05;">MAA GOURI JEWELLERS</div>
+                </div>
+                <div style="font-size:12px;font-weight:700;color:#4d3a0f;letter-spacing:1px;">Gold • Gems • Diamond • Platinum</div>
+            </div>
+
+            <div style="text-align:center;font-size:12px;font-weight:700;color:#5e3f00;margin-bottom:8px;">TAX INVOICE</div>
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:2px solid #b07b00;border-bottom:2px solid #b07b00;margin-bottom:12px;">
+                <div style="flex:1;padding:10px;font-size:10px;line-height:1.4;color:#5e4b11;">
+                    <div style="font-size:16px;font-weight:900;color:#5e3f00;">Suraj Chandra</div>
+                    <div style="margin-top:4px;">Sukantapally mathpara</div>
+                    <div style="margin-top:4px;"><strong>GSTIN:</strong> KKKB123</div>
+                    <div style="margin-top:4px;">State Name: West Bengal, Code: 19</div>
+                    <div>Contact: 09064292987</div>
+                </div>
+                <div style="width:220px;padding:10px;font-size:10px;line-height:1.6;color:#231807;text-align:right;">
+                    <div><strong>Invoice No:</strong> <?php echo htmlspecialchars($last_invoice_no); ?></div>
+                    <div style="margin-top:6px;"><strong>Dated:</strong> <?php echo date('d-m-Y'); ?></div>
+                    <div style="margin-top:6px;"><strong>Unit:</strong> 1</div>
                 </div>
             </div>
-            <div style="text-align:center;border-top:1.5px solid #000;border-bottom:1.5px solid #000;padding:8px 0;margin-bottom:10px;">
-                <div style="font-size:20px;font-weight:bold;letter-spacing:1px;">MAA GOURI JEWELLERS</div>
-                <div style="font-size:11px;">Prop: Debabrata Mondal</div>
-                <div style="font-size:11px;">Hamirpur, Balichak, Station Road</div>
-                <div style="font-size:11px;">Paschim Medinipur</div>
-                <div style="font-size:11px;">GSTIN/UIN: 19AEPPM9851A1Z4</div>
-                <div style="font-size:11px;">State Name: West Bengal, Code: 19</div>
-                <div style="font-size:11px;">Contact: +91-9635985848</div>
-            </div>
-            <div style="text-align:center;margin-bottom:10px;">
-                <span style="background:#222;color:#fff;padding:4px 36px;font-size:15px;font-weight:bold;letter-spacing:2px;">INVOICE</span>
-            </div>
-            <div style="font-size:11px;margin-bottom:10px;border-bottom:1px solid #aaa;padding-bottom:8px;">
-                <div><strong>Party:</strong> <?php echo htmlspecialchars($last_customer_name); ?></div>
-                <?php if(!empty($last_customer_address)): ?><div style="padding-left:50px;"><?php echo htmlspecialchars($last_customer_address); ?></div><?php endif; ?>
-                <?php $cgstin = $_POST['customer_gstin'] ?? ''; if(!empty($cgstin)): ?><div><strong>GSTIN:</strong> <?php echo htmlspecialchars($cgstin); ?></div><?php endif; ?>
-                <div><strong>State Name:</strong> West Bengal, Code: 19</div>
-                <div><strong>Contact:</strong> <?php echo htmlspecialchars($last_customer_mobile); ?></div>
-            </div>
 
-            <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:0;">
+            <table style="width:100%;border-collapse:collapse;font-size:10.5px;color:#241b11;margin-bottom:0;">
                 <thead>
-                    <tr style="background:#f5f5f5;">
-                        <th style="border:1px solid #888;padding:5px 4px;text-align:center;width:28px;">Sl</th>
-                        <th style="border:1px solid #888;padding:5px 4px;text-align:left;">Description</th>
-                        <th style="border:1px solid #888;padding:5px 4px;text-align:center;width:52px;">HSN</th>
-                        <th style="border:1px solid #888;padding:5px 4px;text-align:center;width:72px;">Qty/GMS</th>
-                        <th style="border:1px solid #888;padding:5px 4px;text-align:right;width:72px;">Rate</th>
-                        <th style="border:1px solid #888;padding:5px 4px;text-align:center;width:40px;">Per</th>
-                        <th style="border:1px solid #888;padding:5px 4px;text-align:right;width:48px;">Disc%</th>
-                        <th style="border:1px solid #888;padding:5px 4px;text-align:right;width:80px;">Amount</th>
+                    <tr style="background:#fff3c5;">
+                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:left;">DESCRIPTION</th>
+                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:center;width:80px;">HSN CODE</th>
+                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:center;width:80px;">GROSS WT.</th>
+                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:center;width:80px;">NETT WT.</th>
+                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:80px;">RATE ₹/gm</th>
+                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:90px;">PROCESSING CHARGES</th>
+                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:90px;">H.M. CHARGES</th>
+                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:90px;">DISCOUNT</th>
+                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:100px;">NET TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php $counter = 1; foreach($last_items as $item):
-                        $is_other = !empty($item['is_other']) || !empty($item['is_manual']);
+                    <?php $counter = 1; $isFirstItem = true; foreach($last_items as $item):
                         $item_label = htmlspecialchars($item['name']);
-                        if(!$is_other && !empty($item['item_type']) && $item['item_type'] !== 'Other') {
-                            $item_label .= '<br><small style="color:#555;">' . htmlspecialchars($item['item_type']) . '</small>';
+                        if(!empty($item['item_type']) && $item['item_type'] !== 'Other') {
+                            $item_label .= '<br><small style="color:#5e4b11;">' . htmlspecialchars($item['item_type']) . '</small>';
                         }
+                        $quantity = floatval($item['quantity'] ?? 0);
+                        $rate = floatval($item['price'] ?? 0);
+                        $processingCharge = $isFirstItem ? $last_making_charge_amount : null;
+                        $hmCharge = $isFirstItem ? $last_hallmark : null;
+                        $itemDiscount = $isFirstItem ? $last_discount : null;
                     ?>
                     <tr>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:center;"><?php echo $counter++; ?></td>
-                        <td style="border:1px solid #888;padding:5px 4px;"><?php echo $item_label; ?></td>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:center;"><?php echo htmlspecialchars($item['hsn'] ?? '7108'); ?></td>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:center;">
-                            <?php if(floatval($item['quantity'] ?? 0) > 0): ?><strong><?php echo $item['quantity']; ?> GMS</strong><?php else: ?>&#8212;<?php endif; ?>
-                        </td>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:right;"><?php echo floatval($item['price'] ?? 0) > 0 ? number_format($item['price'], 2) : ''; ?></td>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:center;"><?php echo floatval($item['price'] ?? 0) > 0 ? 'GMS' : ''; ?></td>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:right;"></td>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:right;"><?php echo number_format($item['total'], 2); ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;vertical-align:top;"><?php echo $item_label; ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo htmlspecialchars($item['hsn'] ?? '7108'); ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo $quantity > 0 ? number_format($quantity,3) : '&#8212;'; ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo $quantity > 0 ? number_format($quantity,3) : '&#8212;'; ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo $rate > 0 ? number_format($rate,2) : ''; ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo $isFirstItem && $processingCharge !== null ? number_format($processingCharge,2) : '&mdash;'; ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo $isFirstItem && $hmCharge !== null ? number_format($hmCharge,2) : '&mdash;'; ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo $isFirstItem && $itemDiscount !== null ? '- ' . number_format($itemDiscount,2) : '&mdash;'; ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo number_format($item['total'],2); ?></td>
                     </tr>
-                    <?php endforeach; ?>
-
-                    <?php if($last_making_charge_amount > 0): ?>
-                    <tr>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:center;"><?php echo $counter++; ?></td>
-                        <td style="border:1px solid #888;padding:5px 4px;">Making Charge</td>
-                        <td colspan="5" style="border:1px solid #888;padding:5px 4px;"></td>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:right;"><?php echo number_format($last_making_charge_amount, 2); ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php if($last_hallmark > 0): ?>
-                    <tr>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:center;"><?php echo $counter++; ?></td>
-                        <td style="border:1px solid #888;padding:5px 4px;">Hallmark</td>
-                        <td colspan="5" style="border:1px solid #888;padding:5px 4px;"></td>
-                        <td style="border:1px solid #888;padding:5px 4px;text-align:right;"><?php echo number_format($last_hallmark, 2); ?></td>
-                    </tr>
-                    <?php endif; ?>
-
-                    <?php $subtotal_before_tax = $last_subtotal + $last_making_charge_amount + $last_hallmark + $last_pola - $last_discount; ?>
-                    <tr>
-                        <td colspan="7" style="border:1px solid #888;padding:4px;background:#fafafa;"></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo number_format($subtotal_before_tax, 2); ?></td>
-                    </tr>
-                    <?php if($last_cgst_amount > 0): ?>
-                    <tr>
-                        <td colspan="5" style="border:1px solid #888;padding:4px;"></td>
-                        <td colspan="2" style="border:1px solid #888;padding:4px;text-align:right;font-size:10px;">
-                            <strong>CGST@<?php echo $last_cgst_rate; ?>%</strong><br><strong>SGST@<?php echo $last_sgst_rate; ?>%</strong>
-                        </td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;font-size:10px;">
-                            <?php echo number_format($last_cgst_amount, 2); ?><br><?php echo number_format($last_sgst_amount, 2); ?>
-                        </td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php if($last_discount > 0): ?>
-                    <tr>
-                        <td colspan="3" style="border:1px solid #888;padding:4px;font-size:10px;color:#555;">Less:</td>
-                        <td colspan="4" style="border:1px solid #888;padding:4px;text-align:right;font-size:10px;"><strong>Discount</strong></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;font-size:10px;">(-) <?php echo number_format($last_discount, 2); ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php if(abs($last_round_off) > 0.001): ?>
-                    <tr>
-                        <td colspan="7" style="border:1px solid #888;padding:4px;text-align:right;font-size:10px;"><strong>Round Off</strong></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;font-size:10px;"><?php echo ($last_round_off >= 0 ? '' : '(-) ') . number_format(abs($last_round_off), 2); ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <tr style="background:#f0f0f0;font-weight:bold;">
-                        <td colspan="3" style="border:1px solid #888;padding:6px;text-align:right;font-size:11px;">Total</td>
-                        <td style="border:1px solid #888;padding:6px;text-align:center;"><?php echo $last_total_quantity; ?> GMS</td>
-                        <td colspan="3" style="border:1px solid #888;padding:6px;"></td>
-                        <td style="border:1px solid #888;padding:6px;text-align:right;font-size:13px;"><strong>Rs <?php echo number_format($last_total, 2); ?></strong></td>
-                    </tr>
+                    <?php $isFirstItem = false; endforeach; ?>
                 </tbody>
+                <tfoot>
+                    <tr style="background:#fff3c5;font-weight:700;">
+                        <td colspan="2" style="border:1px solid #9b8561;padding:6px 5px;text-align:right;">Total:</td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo number_format($last_total_quantity,3); ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo number_format($last_total_quantity,3); ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;">&mdash;</td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo number_format($last_making_charge_amount,2); ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo number_format($last_hallmark,2); ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;">- <?php echo number_format($last_discount,2); ?></td>
+                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo number_format($last_total,2); ?></td>
+                    </tr>
+                </tfoot>
             </table>
 
-            <div style="font-size:11px;border:1px solid #888;border-top:none;padding:6px 8px;background:#fafafa;">
-                <strong>Amount Chargeable (in words)</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<em>E. &amp; O.E</em>
-                <div style="margin-top:4px;"><strong>Indian Rupees <?php echo convertNumberToWords($last_total); ?></strong></div>
-            </div>
-
-            <?php if($last_cgst_amount > 0): ?>
-            <table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:12px;">
-                <thead>
-                    <tr style="background:#f0f0f0;">
-                        <th style="border:1px solid #888;padding:4px;text-align:center;" rowspan="2">HSN/SAC</th>
-                        <th style="border:1px solid #888;padding:4px;text-align:center;" rowspan="2">Taxable Value</th>
-                        <th style="border:1px solid #888;padding:4px;text-align:center;" colspan="2">CGST</th>
-                        <th style="border:1px solid #888;padding:4px;text-align:center;" colspan="2">SGST/UTGST</th>
-                        <th style="border:1px solid #888;padding:4px;text-align:center;" rowspan="2">Total Tax</th>
-                    </tr>
-                    <tr style="background:#f0f0f0;">
-                        <th style="border:1px solid #888;padding:4px;text-align:center;">Rate</th>
-                        <th style="border:1px solid #888;padding:4px;text-align:center;">Amount</th>
-                        <th style="border:1px solid #888;padding:4px;text-align:center;">Rate</th>
-                        <th style="border:1px solid #888;padding:4px;text-align:center;">Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $hsn_groups = [];
-                    foreach($last_items as $item) {
-                        $hsn = !empty($item['hsn']) ? $item['hsn'] : '7108';
-                        if(!isset($hsn_groups[$hsn])) $hsn_groups[$hsn] = 0;
-                        $hsn_groups[$hsn] += floatval($item['total']);
-                    }
-                    $total_taxable=$total_cgst_sum=$total_sgst_sum=0;
-                    foreach($hsn_groups as $hsn => $taxable_val):
-                        $c = round($taxable_val * $last_cgst_rate / 100, 2);
-                        $s = round($taxable_val * $last_sgst_rate / 100, 2);
-                        $total_taxable += $taxable_val; $total_cgst_sum += $c; $total_sgst_sum += $s;
-                    ?>
-                    <tr>
-                        <td style="border:1px solid #888;padding:4px;text-align:center;"><?php echo htmlspecialchars($hsn); ?></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo number_format($taxable_val,2); ?></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo $last_cgst_rate; ?>%</td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo number_format($c,2); ?></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo $last_sgst_rate; ?>%</td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo number_format($s,2); ?></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo number_format($c+$s,2); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                    <tr style="font-weight:bold;background:#f5f5f5;">
-                        <td style="border:1px solid #888;padding:4px;text-align:right;">Total</td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo number_format($total_taxable,2); ?></td>
-                        <td style="border:1px solid #888;padding:4px;"></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo number_format($total_cgst_sum,2); ?></td>
-                        <td style="border:1px solid #888;padding:4px;"></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo number_format($total_sgst_sum,2); ?></td>
-                        <td style="border:1px solid #888;padding:4px;text-align:right;"><?php echo number_format($total_cgst_sum+$total_sgst_sum,2); ?></td>
-                    </tr>
-                </tbody>
-            </table>
-            <div style="font-size:11px;margin-top:6px;padding:4px 0;">
-                <strong>Tax Amount (in words):</strong> <strong>Indian Rupees <?php echo convertNumberToWords($last_cgst_amount + $last_sgst_amount); ?></strong>
-            </div>
-            <?php endif; ?>
-
-            <div style="font-size:10px;margin-top:10px;border-top:1px solid #ccc;padding-top:6px;">
-                <strong>Declaration</strong><br>
-                We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
-            </div>
-
-            <!-- Payment stamp -->
-            <div style="margin-top:12px;display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;">
-                <?php if($last_payment_status === 'paid' && $last_is_split): ?>
-                <div style="border:3px solid #16a34a;border-radius:8px;padding:8px 16px;transform:rotate(-5deg);">
-                    <div style="color:#16a34a;font-size:14px;font-weight:900;">&#10003; PAID (Split)</div>
-                    <div style="color:#065f46;font-size:10px;margin-top:3px;">
-                        Cash: <strong>&#8377;<?php echo number_format($last_cash_paid,2); ?></strong> &nbsp;
-                        UPI: <strong>&#8377;<?php echo number_format($last_upi_paid,2); ?></strong>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
+                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">INSTRUMENT NO.</div>
+                    <div style="font-size:10px;color:#5e4b11;">Not Applicable</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;font-size:10px;">
+                        <div style="background:#fff;border:1px solid #d8b34f;padding:8px;text-align:center;">TYPE<br><strong><?php echo htmlspecialchars($last_payment_method ?: 'Cash'); ?></strong></div>
+                        <div style="background:#fff;border:1px solid #d8b34f;padding:8px;text-align:center;">DATE<br><strong><?php echo date('d-m-Y'); ?></strong></div>
+                        <div style="grid-column:span 2;background:#fff;border:1px solid #d8b34f;padding:8px;text-align:center;">AMOUNT<br><strong>Rs <?php echo number_format($last_total,2); ?></strong></div>
                     </div>
                 </div>
-                <?php elseif($last_payment_status === 'paid'): ?>
-                <div style="border:3px solid #16a34a;border-radius:8px;padding:6px 18px;transform:rotate(-5deg);">
-                    <div style="color:#16a34a;font-size:18px;font-weight:900;letter-spacing:2px;">&#10003; PAID</div>
-                    <div style="color:#16a34a;font-size:9px;text-align:center;">Full Payment Received</div>
-                </div>
-                <?php elseif($last_payment_status === 'part'): ?>
-                <div style="border:3px solid #d97706;border-radius:8px;padding:6px 18px;transform:rotate(-5deg);">
-                    <div style="color:#d97706;font-size:15px;font-weight:900;">&#9203; PART PAID</div>
-                    <div style="color:#d97706;font-size:10px;">Paid: <strong>&#8377;<?php echo number_format($last_paid_amount,2); ?></strong></div>
-                    <div style="color:#dc2626;font-size:10px;">Balance: <strong>&#8377;<?php echo number_format($last_balance_amount,2); ?></strong></div>
-                    <?php $dd = $_POST['due_date'] ?? ''; if(!empty($dd)): ?>
-                    <div style="color:#7a4e0a;font-size:10px;margin-top:2px;">Due: <strong><?php echo date('d-M-Y', strtotime($dd)); ?></strong></div>
-                    <?php endif; ?>
-                </div>
-                <?php else: ?>
-                <div style="border:3px solid #dc2626;border-radius:8px;padding:6px 18px;transform:rotate(-5deg);">
-                    <div style="color:#dc2626;font-size:16px;font-weight:900;letter-spacing:2px;">&#10007; UNPAID</div>
-                    <div style="color:#dc2626;font-size:9px;">Balance: &#8377;<?php echo number_format($last_total,2); ?></div>
-                </div>
-                <?php endif; ?>
-                <div style="font-size:10px;color:#555;margin-top:4px;">
-                    <strong>Payment Mode:</strong> <?php echo htmlspecialchars($last_payment_method); ?><br>
-                    <strong>Date:</strong> <?php echo date('d-M-Y'); ?>
+                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
+                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">NET AMOUNT ₹</div>
+                    <?php $net_amount = $last_total + $last_discount - $last_cgst_amount - $last_sgst_amount - $last_round_off; ?>
+                    <div style="font-size:18px;font-weight:800;color:#800020;">Rs <?php echo number_format($net_amount,2); ?></div>
+                    <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;">
+                        <div style="background:#fff;border:1px solid #d8b34f;padding:6px;">DISCOUNT<br><strong>Rs <?php echo number_format($last_discount,2); ?></strong></div>
+                        <div style="background:#fff;border:1px solid #d8b34f;padding:6px;">OUTPUT CGST<br><strong>Rs <?php echo number_format($last_cgst_amount,2); ?></strong></div>
+                        <div style="background:#fff;border:1px solid #d8b34f;padding:6px;">OUTPUT SGST<br><strong>Rs <?php echo number_format($last_sgst_amount,2); ?></strong></div>
+                        <div style="background:#fff;border:1px solid #d8b34f;padding:6px;">ROUND OFF<br><strong>Rs <?php echo number_format($last_round_off,2); ?></strong></div>
+                    </div>
                 </div>
             </div>
 
-            <div style="display:flex;justify-content:space-between;margin-top:28px;font-size:11px;">
-                <div>Customer's Seal and Signature</div>
-                <div style="text-align:right;">for MAA GOURI JEWELLERS<br><br><br>Authorised Signatory</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
+                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">GROSS AMOUNT ₹</div>
+                    <div style="font-size:20px;font-weight:800;color:#000;">Rs <?php echo number_format($last_total + $last_discount,2); ?></div>
+                </div>
+                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
+                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">ADVANCE</div>
+                    <div style="font-size:18px;font-weight:700;color:#065f46;">Rs <?php echo number_format($last_paid_amount,2); ?></div>
+                    <div style="font-size:10px;margin-top:4px;">Amount Paid in Full</div>
+                </div>
             </div>
-            <div style="font-size:10px;text-align:center;margin-top:15px;padding-top:10px;border-top:1px solid #ddd;">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
+                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">PAYMENT BREAKUP</div>
+                    <?php $last_upi_card_amount = $last_upi_paid + $last_account_paid; ?>
+                    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;">Cash<span>Rs <?php echo number_format($last_cash_paid,2); ?></span></div>
+                    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;">UPI/Card<span>Rs <?php echo number_format($last_upi_card_amount,2); ?></span></div>
+                    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;">Due Amount<span>Rs <?php echo number_format($last_balance_amount,2); ?></span></div>
+                    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;">Date of Pay<span><?php echo !empty($last_due_date) ? date('d-m-Y', strtotime($last_due_date)) : 'N/A'; ?></span></div>
+                </div>
+                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
+                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">AMOUNT IN WORDS</div>
+                    <div style="font-size:10px;line-height:1.4;">Rupees <?php echo convertNumberToWords($last_total); ?> only.</div>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-top:18px;gap:12px;">
+                <div style="min-width:240px;font-size:10.5px;">
+                    <div style="font-weight:800;margin-bottom:6px;">CUSTOMER'S SIGNATURE</div>
+                    <div style="height:66px;border-bottom:1px solid #9d8b67;width:100%;"></div>
+                </div>
+                <div style="min-width:260px;text-align:right;font-size:10.5px;">
+                    <div style="font-weight:800;">for MAA GOURI JEWELLERS</div>
+                    <div style="margin-top:42px;border-top:1px solid #9d8b67;padding-top:4px;">Authorised Signatory</div>
+                </div>
+            </div>
+
+            <div style="font-size:9.5px;text-align:center;margin-top:14px;color:#5e4b11;">
                 SUBJECT TO PASCHIM MEDINIPUR JURISDICTION<br>This is a Computer Generated Invoice
             </div>
         </div>

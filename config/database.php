@@ -48,7 +48,7 @@
         invoice_no VARCHAR(50) UNIQUE NOT NULL,
         customer_name VARCHAR(100) NOT NULL,
         customer_mobile VARCHAR(15) NOT NULL,
-        gst_type ENUM('gst', 'non_gst') DEFAULT 'non_gst',
+        gst_type ENUM('gst_3', 'gst_18', 'non_gst') DEFAULT 'non_gst',
         subtotal DECIMAL(10,2) DEFAULT 0,
         gst_amount DECIMAL(10,2) DEFAULT 0,
         total_amount DECIMAL(10,2) DEFAULT 0,
@@ -61,6 +61,15 @@
     $chk_account = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'account_paid'");
     if($chk_account && mysqli_num_rows($chk_account) == 0) {
         mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN account_paid DECIMAL(10,2) DEFAULT 0");
+    }
+
+    // Update gst_type ENUM to include gst_3 and gst_18 (migration from old schema)
+    $chk_gst = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'gst_type'");
+    if($chk_gst && mysqli_num_rows($chk_gst) > 0) {
+        $gst_col = mysqli_fetch_assoc($chk_gst);
+        if($gst_col && strpos($gst_col['Type'], "'gst_3'") === false) {
+            mysqli_query($conn, "ALTER TABLE invoices MODIFY COLUMN gst_type ENUM('gst_3', 'gst_18', 'non_gst') DEFAULT 'non_gst'");
+        }
     }
 
     $create_invoice_items = "CREATE TABLE IF NOT EXISTS invoice_items (

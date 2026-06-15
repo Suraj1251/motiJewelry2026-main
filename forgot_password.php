@@ -286,7 +286,7 @@ $step = $_SESSION['fp_step'] ?? $step;
                 </div>
                 <button type="submit" name="reset_password" id="resetBtn"
                         class="w-full gradient-bg text-white py-2.5 rounded-lg font-semibold hover:opacity-90 transition text-sm">
-                    <i class="fas fa-save mr-2"></i>Save New Password
+                    <i class="fas fa-save mr-1"></i>Save New Password
                 </button>
             </form>
 
