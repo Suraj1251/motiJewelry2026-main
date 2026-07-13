@@ -1,8 +1,8 @@
-    <?php
-    $host = 'localhost';
-    $user = 'jeweller';
-    $password = 'Moti@1234';
-    $database = 'moti_jewellers';
+<?php
+$host = 'localhost';
+$user = 'gouriUser';
+$password = 'prc@1234';
+$database = 'gouribilling';
 
     $conn = mysqli_connect($host, $user, $password, $database);
 
@@ -39,9 +39,21 @@
         name VARCHAR(100) NOT NULL,
         mobile VARCHAR(15) UNIQUE NOT NULL,
         email VARCHAR(100),
+        address VARCHAR(255) DEFAULT '',
+        gst_number VARCHAR(20) DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )";
     mysqli_query($conn, $create_customers);
+
+    $chk_address = mysqli_query($conn, "SHOW COLUMNS FROM customers LIKE 'address'");
+    if($chk_address && mysqli_num_rows($chk_address) == 0) {
+        mysqli_query($conn, "ALTER TABLE customers ADD COLUMN address VARCHAR(255) DEFAULT '' AFTER email");
+    }
+
+    $chk_gst = mysqli_query($conn, "SHOW COLUMNS FROM customers LIKE 'gst_number'");
+    if($chk_gst && mysqli_num_rows($chk_gst) == 0) {
+        mysqli_query($conn, "ALTER TABLE customers ADD COLUMN gst_number VARCHAR(20) DEFAULT '' AFTER address");
+    }
 
     $create_invoices = "CREATE TABLE IF NOT EXISTS invoices (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -83,21 +95,21 @@
     mysqli_query($conn, $create_invoice_items);
 
     // Insert admin user if empty
-    $check_admin = mysqli_query($conn, "SELECT id FROM users WHERE mobile = '9876543210'");
+    $check_admin = mysqli_query($conn, "SELECT id FROM users WHERE mobile = '96472 91299'");
     if(mysqli_num_rows($check_admin) == 0) {
         $hash = password_hash('123456', PASSWORD_DEFAULT);
-        mysqli_query($conn, "INSERT INTO users (name, mobile, email, password) VALUES ('Admin User', '9876543210', 'admin@gourijewellers.com', '$hash')");
+        mysqli_query($conn, "INSERT INTO users (name, mobile, email, password) VALUES ('Admin User', '96472 91299', 'admin@gourijewellers.com', '$hash')");
     }
 
     // Set session user if needed
     if(isset($_SESSION['user_id'])) {
         $check = mysqli_query($conn, "SELECT id FROM users WHERE id = '{$_SESSION['user_id']}'");
         if(mysqli_num_rows($check) == 0) {
-            $admin = mysqli_query($conn, "SELECT id FROM users WHERE mobile = '9876543210'");
+            $admin = mysqli_query($conn, "SELECT id FROM users WHERE mobile = '96472 91299'");
             $admin_row = mysqli_fetch_assoc($admin);
             $_SESSION['user_id'] = $admin_row['id'];
             $_SESSION['user_name'] = 'Admin User';
-            $_SESSION['user_mobile'] = '9876543210';
+            $_SESSION['user_mobile'] = '96472 91299';
         }
     }
     ?>

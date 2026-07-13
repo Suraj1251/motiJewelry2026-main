@@ -100,6 +100,8 @@ if($is_logged_in) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <meta name="author" content="MANU GUPTA">
+    <meta name="description" content="Gouri Jewellers - Premium Jewellery Management System">
     <title>Gouri Jewellers - Premium Jewellery Management System</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -111,270 +113,110 @@ if($is_logged_in) {
         * { font-family: 'Poppins', sans-serif; box-sizing: border-box; }
         h1,h2,h3,.gold-font { font-family: 'Playfair Display', serif; }
 
-        /* ========== SIDEBAR ========== */
-        .sidebar {
+        /* ========== TOP NAVBAR (fixed) ========== */
+        nav.nav-gold {
+            background: linear-gradient(135deg, #b5730e, #d68b16) !important;
             position: fixed;
             top: 0;
             left: 0;
-            width: 240px;
-            height: 100vh;
+            right: 0;
+            width: 100%;
+        }
+
+        .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; backdrop-filter: blur(2px); }
+        .sidebar-overlay.active { display: block; }
+        .sidebar {
+            position: fixed; top: 0; left: 0; width: 240px; height: 100vh;
             background: linear-gradient(180deg, #7a4e0a 0%, #b5730e 40%, #d68b16 100%);
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
+            z-index: 1000; display: flex; flex-direction: column;
             box-shadow: 4px 0 24px rgba(0,0,0,0.25);
             transition: transform 0.35s cubic-bezier(.4,0,.2,1);
-            overflow-y: auto;
-            overflow-x: hidden;
+            overflow-y: auto; overflow-x: hidden;
         }
-
         .sidebar::-webkit-scrollbar { width: 4px; }
-        .sidebar::-webkit-scrollbar-track { background: transparent; }
         .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        .sidebar-logo { padding: 22px 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.18); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+        .sidebar-logo img { width: 44px; height: 44px; object-fit: contain; border-radius: 50%; background: rgba(255,255,255,0.1); padding: 3px; }
+        .sidebar-logo-text h2 { color: #fff; font-size: 13px; font-weight: 700; line-height: 1.3; font-family: 'Playfair Display', serif; }
+        .sidebar-logo-text p { color: rgba(255,255,255,0.65); font-size: 10px; margin-top: 1px; }
+        .sidebar-nav { flex: 1; padding: 10px 0; }
+        .sidebar-section-label { padding: 10px 20px 4px; color: rgba(255,255,255,0.45); font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+        .sidebar-nav a { display: flex; align-items: center; gap: 12px; padding: 11px 20px; color: rgba(255,255,255,0.85); text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.2s ease; border-left: 3px solid transparent; position: relative; }
+        .sidebar-nav a:hover { background: rgba(255,255,255,0.13); color: #fff; border-left-color: rgba(255,255,255,0.8); padding-left: 26px; }
+        .sidebar-nav a.active { background: rgba(255,255,255,0.22); color: #fff; border-left-color: #fff; font-weight: 700; }
+        .sidebar-nav a i { width: 18px; text-align: center; font-size: 14px; flex-shrink: 0; }
+        .sidebar-divider { height: 1px; background: rgba(255,255,255,0.12); margin: 6px 16px; }
+        .sidebar-user { padding: 14px 16px 18px; border-top: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.12); flex-shrink: 0; }
+        .sidebar-user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .sidebar-user-info i { color: rgba(255,255,255,0.9); font-size: 26px; }
+        .sidebar-user-info .user-details p { color: #fff; font-size: 12px; font-weight: 600; }
+        .sidebar-user-info .user-details span { color: rgba(255,255,255,0.55); font-size: 10px; }
+        .sidebar-logout { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; background: rgba(239,68,68,0.75); color: #fff; border-radius: 8px; font-size: 12px; font-weight: 600; text-decoration: none; transition: background 0.2s; }
+        .sidebar-logout:hover { background: #ef4444; color: #fff; }
+        .page-wrapper { transition: margin-left 0.35s ease; }
+        .page-wrapper.logged-in-page { margin-left: 240px; min-height: 100vh; }
+        .mobile-burger { display: none; width: 28px; height: 20px; position: relative; cursor: pointer; }
+        .mobile-burger span { display: block; position: absolute; height: 3px; width: 100%; background: #fff; border-radius: 3px; transition: all 0.3s ease; }
+        .mobile-burger span:nth-child(1) { top: 0; }
+        .mobile-burger span:nth-child(2) { top: 9px; }
+        .mobile-burger span:nth-child(3) { top: 18px; }
+        .mobile-burger.active span:nth-child(1) { top: 9px; transform: rotate(135deg); }
+        .mobile-burger.active span:nth-child(2) { opacity: 0; left: -20px; }
+        .mobile-burger.active span:nth-child(3) { top: 9px; transform: rotate(-135deg); }
 
-        .sidebar-logo {
-            padding: 22px 18px 16px;
-            border-bottom: 1px solid rgba(255,255,255,0.18);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-shrink: 0;
-        }
-
-        .sidebar-logo img {
-            width: 44px;
-            height: 44px;
-            object-fit: contain;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.1);
-            padding: 3px;
-            flex-shrink: 0;
-        }
-
-        .sidebar-logo-text h2 {
-            color: #fff;
-            font-size: 13px;
-            font-weight: 700;
-            line-height: 1.3;
-            font-family: 'Playfair Display', serif;
-            letter-spacing: 0.5px;
-        }
-
-        .sidebar-logo-text p {
-            color: rgba(255,255,255,0.65);
-            font-size: 10px;
-            margin-top: 1px;
-        }
-
-        .sidebar-nav {
-            flex: 1;
-            padding: 10px 0;
-        }
-
-        .sidebar-section-label {
-            padding: 10px 20px 4px;
-            color: rgba(255,255,255,0.45);
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-        }
-
-        .sidebar-nav a {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 11px 20px;
-            color: rgba(255,255,255,0.85);
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            border-left: 3px solid transparent;
-            letter-spacing: 0.3px;
-            position: relative;
-        }
-
-        .sidebar-nav a:hover {
-            background: rgba(255,255,255,0.13);
-            color: #fff;
-            border-left-color: rgba(255,255,255,0.8);
-            padding-left: 26px;
-        }
-
-        .sidebar-nav a.active {
-            background: rgba(255,255,255,0.22);
-            color: #fff;
-            border-left-color: #fff;
-            font-weight: 700;
-        }
-
-        .sidebar-nav a.active::after {
-            content: '';
-            position: absolute;
-            right: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 4px;
-            height: 60%;
-            background: #fff;
-            border-radius: 4px 0 0 4px;
-        }
-
-        .sidebar-nav a i {
-            width: 18px;
-            text-align: center;
-            font-size: 14px;
-            flex-shrink: 0;
-            opacity: 0.9;
-        }
-
-        .sidebar-divider {
-            height: 1px;
-            background: rgba(255,255,255,0.12);
-            margin: 6px 16px;
-        }
-
-        .sidebar-user {
-            padding: 14px 16px 18px;
-            border-top: 1px solid rgba(255,255,255,0.18);
-            background: rgba(0,0,0,0.12);
-            flex-shrink: 0;
-        }
-
-        .sidebar-user-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-
-        .sidebar-user-info i {
-            color: rgba(255,255,255,0.9);
-            font-size: 26px;
-            flex-shrink: 0;
-        }
-
-        .sidebar-user-info .user-details p {
-            color: #fff;
-            font-size: 12px;
-            font-weight: 600;
-            line-height: 1.3;
-        }
-
-        .sidebar-user-info .user-details span {
-            color: rgba(255,255,255,0.55);
-            font-size: 10px;
-        }
-
-        .sidebar-logout {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 9px 14px;
-            background: rgba(239,68,68,0.75);
-            color: #fff;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            text-decoration: none;
-            transition: background 0.2s;
-            letter-spacing: 0.5px;
-            border: 1px solid rgba(239,68,68,0.4);
-        }
-
-        .sidebar-logout:hover {
-            background: #ef4444;
-            color: #fff;
-        }
-
-        .sidebar-login-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 9px 14px;
-            background: rgba(255,255,255,0.2);
-            color: #fff;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            text-decoration: none;
-            transition: background 0.2s;
-            border: 1px solid rgba(255,255,255,0.3);
-        }
-
-        .sidebar-login-btn:hover { background: rgba(255,255,255,0.3); }
-
-        /* Sidebar overlay (mobile) */
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.5);
-            z-index: 999;
-            backdrop-filter: blur(2px);
-        }
-
-        .sidebar-overlay.active { display: block; }
-
-        /* ========== MAIN LAYOUT ========== */
-        .page-wrapper {
-            margin-left: 240px;
-            min-height: 100vh;
-            transition: margin-left 0.35s ease;
-        }
-
-        /* ========== TOP NAVBAR ========== */
-        nav.nav-gold {
-            background: linear-gradient(135deg, #b5730e, #d68b16) !important;
-            margin-left: 0;
-        }
+        #navSpacer { width: 100%; min-height: 72px; }
+        @media (max-width: 480px) { #navSpacer { min-height: 64px; } }
 
         nav.nav-gold h1,
         nav.nav-gold p,
         nav.nav-gold span { color: #ffffff !important; }
 
-        /* ========== BURGER MENU ========== */
-        .burger-menu {
-            width: 28px;
-            height: 20px;
-            position: relative;
-            cursor: pointer;
+        /* ========== NAVBAR LOGIN / USER ========== */
+        .nav-login-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 20px;
+            background: rgba(255,255,255,0.18);
+            color: #fff;
+            border-radius: 50px;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid rgba(255,255,255,0.35);
+            transition: all 0.2s ease;
+            letter-spacing: 0.4px;
         }
 
-        .burger-menu span {
-            display: block;
-            position: absolute;
-            height: 3px;
-            width: 100%;
-            background: #ffffff;
-            border-radius: 3px;
-            transition: all 0.3s ease;
+        .nav-login-btn:hover {
+            background: rgba(255,255,255,0.3);
+            color: #fff;
         }
 
-        .burger-menu span:nth-child(1) { top: 0px; }
-        .burger-menu span:nth-child(2) { top: 9px; }
-        .burger-menu span:nth-child(3) { top: 18px; }
-
-        .burger-menu.active span:nth-child(1) { top: 9px; transform: rotate(135deg); }
-        .burger-menu.active span:nth-child(2) { opacity: 0; left: -20px; }
-        .burger-menu.active span:nth-child(3) { top: 9px; transform: rotate(-135deg); }
-
-        /* ========== MOBILE RESPONSIVE ========== */
-        @media (max-width: 768px) {
-            .sidebar { transform: translateX(-100%); }
-            .sidebar.open { transform: translateX(0); }
-            .page-wrapper { margin-left: 0 !important; }
-            .mobile-burger { display: block !important; }
+        .nav-user-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
-        @media (min-width: 769px) {
-            .mobile-burger { display: none !important; }
+        .nav-logout-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 16px;
+            background: rgba(239,68,68,0.85);
+            color: #fff;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid rgba(239,68,68,0.4);
+            transition: background 0.2s;
         }
 
-        /* ========== SPARKLES ========== */
+        .nav-logout-btn:hover { background: #ef4444; color: #fff; }
+
+        /* ========== JEWEL SPARKLES ========== */
         .jewel-sparkle {
             position: fixed;
             border-radius: 50%;
@@ -618,6 +460,15 @@ if($is_logged_in) {
             .hero-buttons a { width: 80%; text-align: center; }
         }
 
+        @media (max-width: 768px) {
+            .nav-user-wrap span.nav-user-name { display: none; }
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .page-wrapper.logged-in-page { margin-left: 0 !important; }
+            .mobile-burger { display: block !important; }
+            nav.nav-gold { margin-left: 0 !important; }
+        }
+
         @media (max-width: 480px) {
             .stats-grid { grid-template-columns: 1fr !important; }
             .floating-logo img { width: 110px !important; height: 110px !important; }
@@ -668,21 +519,36 @@ if($is_logged_in) {
         createJewelSparkles();
     }
 
+    function syncNavSpacer() {
+        const nav = document.getElementById('mainNav');
+        const spacer = document.getElementById('navSpacer');
+        if(nav && spacer) {
+            spacer.style.height = nav.offsetHeight + 'px';
+        }
+    }
+
     function toggleSidebar() {
         const sidebar = document.getElementById('mainSidebar');
         const overlay = document.getElementById('sidebarOverlay');
-        const burger  = document.getElementById('burgerMenu');
-        sidebar.classList.toggle('open');
-        overlay.classList.toggle('active');
-        burger.classList.toggle('active');
-        document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+        const burger = document.getElementById('burgerMenu');
+        if(sidebar && overlay) {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+            if(burger) burger.classList.toggle('active');
+            document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+        }
     }
 
     function closeSidebar() {
-        document.getElementById('mainSidebar').classList.remove('open');
-        document.getElementById('sidebarOverlay').classList.remove('active');
-        document.getElementById('burgerMenu').classList.remove('active');
-        document.body.style.overflow = '';
+        const sidebar = document.getElementById('mainSidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        const burger = document.getElementById('burgerMenu');
+        if(sidebar && overlay) {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('active');
+            if(burger) burger.classList.remove('active');
+            document.body.style.overflow = '';
+        }
     }
 
     window.addEventListener('load', function() {
@@ -692,17 +558,18 @@ if($is_logged_in) {
             const ov = document.getElementById('loadingOverlay');
             if(ov) { ov.style.opacity = '0'; ov.style.visibility = 'hidden'; setTimeout(()=>ov.style.display='none', 500); }
         }, 2000);
+        syncNavSpacer();
+        setTimeout(syncNavSpacer, 300);
     });
+
+    window.addEventListener('resize', syncNavSpacer);
 </script>
 
-<!-- Loading Overlay -->
 <!-- Loading Overlay -->
 <div id="loadingOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;justify-content:center;align-items:center;overflow:hidden;transition:opacity 0.6s ease,visibility 0.6s ease;background:radial-gradient(ellipse at 50% 60%, #1a0a00 0%, #0d0500 100%);">
 
     <!-- Scanlines texture -->
     <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(214,139,22,0.015) 3px,rgba(214,139,22,0.015) 4px);pointer-events:none;z-index:1;"></div>
-
-    <!-- background diamonds removed to keep only central gem -->
 
     <!-- Stars / sparkles container -->
     <div id="loaderStars" style="position:absolute;inset:0;pointer-events:none;z-index:2;"></div>
@@ -747,72 +614,40 @@ if($is_logged_in) {
     </style>
 </div>
 
-<!-- Sidebar Overlay (mobile) -->
+<?php if($is_logged_in): ?>
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
-
-<!-- ========== SIDEBAR ========== -->
 <div class="sidebar" id="mainSidebar">
-
-    <!-- Logo -->
     <div class="sidebar-logo">
         <?php
-        $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-preview.png','moti-removebg-preview.png'];
         $logo_found = false;
         foreach($logo_paths as $path) {
             if(file_exists($path)) {
-                echo '<img src="'.$path.'" alt="Moti Jewellers Logo">';
+                echo '<img src="'.$path.'" alt="Logo">';
                 $logo_found = true; break;
             }
         }
-        if(!$logo_found) echo '<i class="fas fa-gem" style="color:#fff;font-size:30px;flex-shrink:0;"></i>';
+        if(!$logo_found) echo '<img src="assets/images/moti-removebg-preview.png" alt="Moti Jewellers Logo" style="width:38px;height:38px;object-fit:contain;display:block;">';
         ?>
-        <div class="sidebar-logo-text">
-            <h2>MAA GOURI JEWELLERS</h2>
-            <p>Premium Since 2026</p>
-        </div>
+        <div class="sidebar-logo-text"><h2>GOURI JEWELLERS</h2><p>Premium Since 2026</p></div>
     </div>
-
-    <!-- Navigation -->
     <nav class="sidebar-nav">
         <div class="sidebar-section-label">Main Menu</div>
-
-        <a href="index.php" class="active">
-            <i class="fas fa-home"></i> HOME
-        </a>
-        <a href="billing.php">
-            <i class="fas fa-receipt"></i> BILLING
-        </a>
-        <a href="stock.php">
-            <i class="fas fa-boxes"></i> STOCK
-        </a>
-        <a href="customers.php">
-            <i class="fas fa-users"></i> CUSTOMERS
-        </a>
-
+        <a href="index.php" class="active"><i class="fas fa-home"></i> HOME</a>
+        <a href="billing.php"><i class="fas fa-receipt"></i> BILLING</a>
+        <a href="stock.php"><i class="fas fa-boxes"></i> STOCK</a>
+        <a href="customers.php"><i class="fas fa-users"></i> CUSTOMERS</a>
         <div class="sidebar-divider"></div>
         <div class="sidebar-section-label">Analytics</div>
-
-        <a href="reports.php">
-            <i class="fas fa-chart-bar"></i> REPORTS
-        </a>
-        <a href="income_expenses.php">
-            <i class="fas fa-chart-line"></i> INCOME & EXP
-        </a>
-
+        <a href="reports.php"><i class="fas fa-chart-bar"></i> REPORTS</a>
+        <a href="income_expenses.php"><i class="fas fa-chart-line"></i> INCOME & EXP</a>
         <div class="sidebar-divider"></div>
         <div class="sidebar-section-label">Tools</div>
-
-        <a href="whatsapp_automation.php">
-            <i class="fab fa-whatsapp"></i> WHATSAPP
-        </a>
-        <a href="sbook.php">
-            <i class="fas fa-book"></i> karigori
-        </a>
+        <a href="whatsapp_automation.php"><i class="fab fa-whatsapp"></i> WHATSAPP</a>
+        <a href="sbook.php"><i class="fas fa-book"></i> SANCHAY</a>
+        <a href="purchase.php"><i class="fas fa-shopping-cart"></i> PURCHASE</a>
+        <a href="accounts.php"><i class="fas fa-file-invoice-dollar"></i> ACCOUNTS</a>
     </nav>
-
-    <!-- User Info + Logout -->
     <div class="sidebar-user">
-        <?php if($is_logged_in): ?>
         <div class="sidebar-user-info">
             <i class="fas fa-user-circle"></i>
             <div class="user-details">
@@ -820,69 +655,46 @@ if($is_logged_in) {
                 <span><?php echo htmlspecialchars($_SESSION['user_mobile'] ?? 'Admin'); ?></span>
             </div>
         </div>
-        <a href="logout.php" class="sidebar-logout">
-            <i class="fas fa-sign-out-alt"></i> LOGOUT
-        </a>
-        <?php else: ?>
-        <a href="login.php" class="sidebar-login-btn">
-            <i class="fas fa-sign-in-alt"></i> LOGIN
-        </a>
-        <?php endif; ?>
+        <a href="logout.php" class="sidebar-logout"><i class="fas fa-sign-out-alt"></i> LOGOUT</a>
     </div>
 </div>
-<!-- ========== END SIDEBAR ========== -->
+<?php endif; ?>
 
 <!-- ========== TOP NAVBAR ========== -->
-<nav class="nav-gold shadow-lg sticky top-0 z-50" style="margin-left:240px;">
-    <div class="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
+<nav class="nav-gold shadow-lg z-50" id="mainNav" style="<?php echo $is_logged_in ? 'margin-left:240px;' : ''; ?>">
+    <div class="container mx-auto px-4 sm:px-6 py-3">
         <div class="flex justify-between items-center">
-
-            <!-- Left: Logo + Title -->
-            <!-- <div class="flex items-center space-x-3">
-                <?php
-                $logo_found = false;
-                foreach($logo_paths as $path) {
-                    if(file_exists($path)) {
-                        echo '<img src="'.$path.'" alt="Logo" style="height:40px;width:auto;object-fit:contain;">';
-                        $logo_found = true; break;
-                    }
-                }
-                if(!$logo_found) echo '<i class="fas fa-crown" style="color:#fff;font-size:24px;"></i>';
-                ?>
-                <div>
-                    <h1 class="text-lg sm:text-xl font-bold" style="color:#fff;">MOTI JEWELLERS</h1>
-                    <p class="text-xs hidden sm:block" style="color:rgba(255,255,255,0.75);">Premium Jewellery Management</p>
+            <div class="flex items-center gap-4">
+                <?php if($is_logged_in): ?>
+                <div class="mobile-burger" style="display:none;">
+                    <div class="burger-menu" id="burgerMenu" onclick="toggleSidebar()">
+                        <span></span><span></span><span></span>
+                    </div>
                 </div>
-            </div> -->
-
-            <!-- Right: Theme toggle + user + burger -->
-            <!-- Right Side -->
-<div class="ml-auto flex items-center gap-4">
-
-    <?php if($is_logged_in): ?>
-    <span class="text-sm font-medium text-white">
-        <i class="fas fa-user mr-1"></i>
-        <?php echo htmlspecialchars($_SESSION['user_name']); ?>
-    </span>
-    <?php endif; ?>
-
-    <!-- Mobile burger -->
-    <div class="mobile-burger" style="display:none;">
-        <div class="burger-menu" id="burgerMenu" onclick="toggleSidebar()">
-            <span></span>
-            <span></span>
-            <span></span>
-        </div>
-    </div>
-
-</div>
-
+                <?php endif; ?>
+                <img src="assets/images/moti-removebg-preview.png" alt="Logo" style="height:36px;width:auto;object-fit:contain;">
+                <span class="font-bold text-white text-sm hidden sm:inline" style="font-family:'Playfair Display',serif;">
+                    <i class="fas fa-home mr-2"></i>Dashboard
+                </span>
+            </div>
+            <?php if($is_logged_in): ?>
+            <span class="text-sm font-medium text-white">
+                <i class="fas fa-user mr-1"></i>
+                <?php echo htmlspecialchars($_SESSION['user_name']); ?>
+            </span>
+            <?php else: ?>
+            <a href="login.php" class="nav-login-btn">
+                <i class="fas fa-sign-in-alt"></i>
+                Login
+            </a>
+            <?php endif; ?>
         </div>
     </div>
 </nav>
+<div id="navSpacer"></div>
 
 <!-- ========== PAGE WRAPPER ========== -->
-<div class="page-wrapper">
+<div class="page-wrapper<?php echo $is_logged_in ? ' logged-in-page' : ''; ?>">
 
 <?php if(!$is_logged_in): ?>
 <!-- Hero Section -->
@@ -897,7 +709,7 @@ if($is_logged_in) {
                     $logo_found = true; break;
                 }
             }
-            if(!$logo_found) echo '<i class="fas fa-gem" style="font-size:80px;color:#d68b16;"></i>';
+            if(!$logo_found) echo '<img src="assets/images/moti-removebg-preview.png" alt="Moti Jewellers Logo" style="width:140px;height:auto;display:block;margin:0 auto;">';
             ?>
         </div>
 
@@ -1189,8 +1001,8 @@ if($is_logged_in) {
             <div>
                 <h4 class="font-bold mb-4">CONTACT</h4>
                 <ul class="space-y-2 text-sm" style="color:#6b5a3e;">
-                    <li><i class="fas fa-phone mr-2" style="color:#d68b16;"></i> +91 9635985848</li>
-                    <li><i class="fas fa-envelope mr-2" style="color:#d68b16;"></i> maagourijewellers9635985848@gmail.com</li>
+                    <li><i class="fas fa-phone mr-2" style="color:#d68b16;"></i> +91 96472 91299</li>
+                    <li><i class="fas fa-envelope mr-2" style="color:#d68b16;"></i> santudhara157@gmail.com</li>
                     <li><i class="fab fa-whatsapp mr-2" style="color:#25D366;"></i> WhatsApp Concierge</li>
                 </ul>
             </div>
@@ -1203,7 +1015,7 @@ if($is_logged_in) {
         <div class="mt-8 pt-6 text-center" style="border-top:1px solid rgba(181,115,14,0.25);">
             <p class="text-xs" style="color:#7a4e0a;">
                 &copy; 2026 MAA GOURI JEWELLERS &nbsp;|&nbsp; CRAFTED WITH ELEGANCE &nbsp;|&nbsp;
-                Developed by <a href="https://saamparktechnologyresearch.in/" target="_blank" style="text-decoration:underline;color:#800020;">STR</a>
+                Developed by <a href="https://saamparktechnologyresearch.in/" target="_blank" style="text-decoration:underline;color:#800020;">Saampark Technology</a>
             </p>
         </div>
     </div>
@@ -1306,6 +1118,7 @@ if($is_logged_in) {
             });
         }
 
+        // <meta name="author" content="MANU GUPTA">
         const customerTrendCtx = document.getElementById('customerTrendChart');
         if(customerTrendCtx) {
             new Chart(customerTrendCtx, {

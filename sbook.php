@@ -11,7 +11,9 @@ $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Karigari Payment | Moti Jewellers</title>
+    <meta name="author" content="MANU GUPTA">
+    <meta name="description" content="Karigari Payment Management for Gouri Jewellers">
+    <title>Karigari Payment | Gouri Jewellers</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="assets/css/theme.css">
@@ -444,6 +446,9 @@ $theme = isset($_COOKIE['theme']) ? $_COOKIE['theme'] : 'light';
         <div class="sidebar-section-label">Tools</div>
         <a href="whatsapp_automation.php">
             <i class="fab fa-whatsapp"></i> WHATSAPP
+        </a>
+        <a href="contacts.php">
+            <i class="fas fa-address-book"></i> CONTACTS
         </a>
         <a href="sbook.php" class="active">
             <i class="fas fa-book"></i> karigori

@@ -61,13 +61,13 @@ if(isset($_GET['action']) && $_GET['action'] === 'send_reminder') {
         exit();
     }
 
-    $subject = 'Payment Reminder from Maa Gouri Jewellers';
+    $subject = 'Payment Reminder from GOURI JEWELLERS';
     $invoice_text = $invoice_no ? 'Invoice No: ' . htmlspecialchars($invoice_no) . '<br>' : '';
     $message = '<p>Dear ' . htmlspecialchars($customer_name) . ',</p>' .
                '<p>This is a reminder that an amount of <strong>&#8377;' . number_format($balance_amount, 2) . '</strong> is still due.' .
                ($invoice_no ? ' Please refer to ' . htmlspecialchars($invoice_no) . '.' : '') . '</p>' .
                '<p>Please make the remaining payment at your earliest convenience.</p>' .
-               '<p>Thank you,<br>Maa Gouri Jewellers</p>';
+               '<p>Thank you,<br>GOURI JEWELLERS</p>';
     $sendResult = sendSMTPMail($customer_email, $subject, $message);
     if(!empty($sendResult['success'])) {
         if(!empty($invoice_no)) {
@@ -88,7 +88,7 @@ if($chk_reminder && mysqli_num_rows($chk_reminder) == 0) {
     mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN reminder_sent TINYINT(1) DEFAULT 0");
 }
 
-// ── NEW: AJAX: Mark invoice as fully paid ─────────────────────────────────
+// ── NEW: AJAX: Mark invoice as paid (partial or full custom amount) ───────
 if(isset($_GET['action']) && $_GET['action'] === 'mark_paid') {
     header('Content-Type: application/json');
     if($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -96,20 +96,41 @@ if(isset($_GET['action']) && $_GET['action'] === 'mark_paid') {
         exit();
     }
     $invoice_no = mysqli_real_escape_string($conn, trim($_POST['invoice_no'] ?? ''));
+    $amount = floatval($_POST['amount'] ?? 0);
     if(empty($invoice_no)) {
         echo json_encode(['success' => false, 'message' => 'Invoice number required']);
         exit();
     }
-    $res = mysqli_query($conn, "SELECT total_amount FROM invoices WHERE invoice_no = '$invoice_no' LIMIT 1");
+    if($amount <= 0) {
+        echo json_encode(['success' => false, 'message' => 'Enter a valid amount']);
+        exit();
+    }
+    $res = mysqli_query($conn, "SELECT total_amount, paid_amount FROM invoices WHERE invoice_no = '$invoice_no' LIMIT 1");
     if(!$res || mysqli_num_rows($res) === 0) {
         echo json_encode(['success' => false, 'message' => 'Invoice not found']);
         exit();
     }
     $row = mysqli_fetch_assoc($res);
     $total = floatval($row['total_amount']);
-    $upd = mysqli_query($conn, "UPDATE invoices SET payment_status='paid', paid_amount=$total, balance_amount=0, due_date=NULL WHERE invoice_no='$invoice_no'");
+    $alreadyPaid = floatval($row['paid_amount']);
+    $currentBalance = $total - $alreadyPaid;
+    if($amount > $currentBalance + 0.01) {
+        echo json_encode(['success' => false, 'message' => 'Amount exceeds balance due (₹' . number_format($currentBalance, 2) . ')']);
+        exit();
+    }
+    $newPaid = $alreadyPaid + $amount;
+    $newBalance = max($total - $newPaid, 0);
+    $newStatus = ($newBalance <= 0.01) ? 'paid' : 'part';
+    $dueDateSql = ($newStatus === 'paid') ? ", due_date=NULL" : "";
+    $upd = mysqli_query($conn, "UPDATE invoices SET payment_status='$newStatus', paid_amount=$newPaid, balance_amount=$newBalance$dueDateSql WHERE invoice_no='$invoice_no'");
     if($upd) {
-        echo json_encode(['success' => true, 'message' => 'Payment marked as complete for ' . $invoice_no]);
+        echo json_encode([
+            'success' => true,
+            'message' => $newStatus === 'paid' ? ('Invoice ' . $invoice_no . ' fully paid!') : ('Payment of ₹' . number_format($amount, 2) . ' recorded for ' . $invoice_no),
+            'fully_paid' => $newStatus === 'paid',
+            'new_paid' => $newPaid,
+            'new_balance' => $newBalance
+        ]);
     } else {
         echo json_encode(['success' => false, 'message' => mysqli_error($conn)]);
     }
@@ -130,17 +151,14 @@ if($chk_cash && mysqli_num_rows($chk_cash) == 0) {
     mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN upi_paid DECIMAL(10,2) DEFAULT 0");
 }
 
-// Add account_paid and due_date columns if not exists
-$chk_account_paid = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'account_paid'");
-if($chk_account_paid && mysqli_num_rows($chk_account_paid) == 0) {
-    mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN account_paid DECIMAL(10,2) DEFAULT 0");
-}
-// Add round_off column if missing so printed invoices show rounded amount
-$chk_round = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'round_off'");
-if($chk_round && mysqli_num_rows($chk_round) == 0) {
-    mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN round_off DECIMAL(10,2) DEFAULT 0");
+// Add cheque_paid / old_gold_value columns if not exists
+$chk_cheque = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'cheque_paid'");
+if($chk_cheque && mysqli_num_rows($chk_cheque) == 0) {
+    mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN cheque_paid DECIMAL(10,2) DEFAULT 0");
+    mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN old_gold_value DECIMAL(10,2) DEFAULT 0");
 }
 
+// Add account_paid column (for NEFT) if not exists
 $chk_due_date = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'due_date'");
 if($chk_due_date && mysqli_num_rows($chk_due_date) == 0) {
     mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN due_date DATE NULL");
@@ -177,9 +195,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['upload_pdf'])) {
 $success = '';
 $error = '';
 $last_invoice_no = '';
+$last_bill_type = '';
 $last_customer_name = '';
 $last_customer_mobile = '';
 $last_customer_address = '';
+$last_customer_gstin = '';
 $last_gst_type = '';
 $last_making_charge = 0;
 $last_making_charge_amount = 0;
@@ -202,7 +222,8 @@ $last_balance_amount = 0;
 $last_payment_method = 'Cash';
 $last_cash_paid = 0;
 $last_upi_paid = 0;
-$last_account_paid = 0;
+$last_cheque_paid = 0;
+$last_old_gold_value = 0;
 $last_is_split = 0;
 
 $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-preview.png','moti-removebg-preview.png'];
@@ -238,13 +259,27 @@ foreach ($categories as $cat) {
     }
 }
 
-$itemTypeOptions['Gold 22K'] = array_unique(array_merge($itemTypeOptions['Gold 22K'], ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Other']));
-$itemTypeOptions['Gold 18K'] = array_unique(array_merge($itemTypeOptions['Gold 18K'], ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Baby Ring','Bali','Pitaring','Other']));
-$itemTypeOptions['Silver']   = array_unique(array_merge($itemTypeOptions['Silver'],   ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Tops','Ladies Ring','Gents Ring','Breslet','Tika','Loket','Mankha','Payal','Bichiya','Nosering','Baby Ring','Pat (Gross)','S- (Gross)','Nosepin (Gross)','Sankha','Pola','Other']));
-$itemTypeOptions['Stone']    = array_unique(array_merge($itemTypeOptions['Stone'],    ['Natural Pearl','Gomed','Red Coral','Nila','Panna','Jerkon','Amethist','Cats Eye','Other']));
-$itemTypeOptions['Diamond']  = array_unique(array_merge($itemTypeOptions['Diamond'],  ['Ladies Ring','Gents Ring','Tops','Mangal Sutra','Nose pin','Necklace','Other']));
-$itemTypeOptions['Others']   = array_unique(array_merge($itemTypeOptions['Others'],   ['Shankha','Pala','Mala','Moti Mala','Trasel','Branch Fram','Braslate Pala','parl Mala','Gala','Reparing','Stamp Charg','Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Other']));
+// $itemTypeOptions['Gold 22K'] = array_unique(array_merge($itemTypeOptions['Gold 22K'], ['Chur','Bala','Soket Bauti','Bauti Chur','Pearl Sitahar','Pearl Choker','Baby Breslet','Churi','Necklace','Single Loket','Double Loket','Jhuladul','Gents Breslet','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Other']));
 
+
+// $itemTypeOptions['Gold 18K'] = array_unique(array_merge($itemTypeOptions['Gold 18K'], ['Chur','Moti Chokey','Mankasa','Nosepin','Sankha','Breslet Nova','Steu Nova','Pola','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Baby Ring','Bali','Pitaring','Other']));
+
+
+// $itemTypeOptions['Silver']   = array_unique(array_merge($itemTypeOptions['Silver'],  
+//  ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Tops','Ladies Ring','Gents Ring',
+//  'Breslet','Tika','Loket','Mankha','Payal','Bichiya','Nosering','Baby Ring','Pat (Gross)',
+//  'S- (Gross)','Nosepin (Gross)','Sankha','Pola','Silver Thali', 'Silver Bati ', 
+//  'Silver Glass', 'Silver Spoon ', 'Silver Showpiece', 'B.B.C Silver', 'Mix Silver', 'Other']));
+// $itemTypeOptions['Stone']    = array_unique(array_merge($itemTypeOptions['Stone'],   
+//  ['Natural Pearl','Gomed','Red Coral','Nila','Panna','Jerkon','Amethist','Cats Eye','Other']));
+// $itemTypeOptions['Diamond']  = array_unique(array_merge($itemTypeOptions['Diamond'],
+//   ['Ladies Ring','Gents Ring','Tops','Mangal Sutra','Nose pin','Necklace','Other']));
+// $itemTypeOptions['Others']   = array_unique(array_merge($itemTypeOptions['Others'], 
+//   ['Shankha','Pala','Mala','Moti Mala','Trasel','Branch Fram','Braslate Pala',
+//   'parl Mala','Gala','Reparing','Stamp Charg','Chur','Bala','Churi','Necklace',
+//   'Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey',
+//   'Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra',
+//   'Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova']));
 // ── NEW: Fetch due-today payments ─────────────────────────────────────────
 $today = date('Y-m-d');
 $due_today_result = mysqli_query($conn, "
@@ -282,6 +317,8 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
     $account_paid     = floatval($_POST['account_paid'] ?? 0);
     $cash_paid        = floatval($_POST['cash_paid'] ?? 0);
     $upi_paid         = floatval($_POST['upi_paid'] ?? 0);
+    $cheque_paid      = floatval($_POST['cheque_paid'] ?? 0);
+    $old_gold_value   = floatval($_POST['old_gold_value'] ?? 0);
     $is_split         = intval($_POST['is_split_payment'] ?? 0);
     $due_date = mysqli_real_escape_string($conn, $_POST['due_date'] ?? '');
     if(empty($due_date)) $due_date = 'NULL';
@@ -290,16 +327,6 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
     if ($is_split) {
         $payment_method = 'Cash+UPI';
         $paid_amount    = $cash_paid + $upi_paid;
-    }
-
-    if (!$is_split) {
-        if (strtoupper($payment_method) === 'CASH') {
-            $cash_paid = $paid_amount;
-        } elseif (strtoupper($payment_method) === 'UPI') {
-            $upi_paid = $paid_amount;
-        } elseif (strtoupper($payment_method) === 'NEFT') {
-            $account_paid = $paid_amount;
-        }
     }
 
     if(strtoupper($payment_method) === 'NEFT') {
@@ -333,8 +360,24 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
                        ON DUPLICATE KEY UPDATE name = '$customer_name', address = '$customer_address', email = '$customer_email'";
     mysqli_query($conn, $customer_query);
 
+    // Ensure bill_type column exists
+    $chkBillType = mysqli_query($conn, "SHOW COLUMNS FROM invoices LIKE 'bill_type'");
+    if($chkBillType && mysqli_num_rows($chkBillType) == 0) {
+        mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN bill_type VARCHAR(10) DEFAULT 'invoice'");
+    }
+
     $manual_inv = trim($_POST['manual_invoice_no'] ?? '');
-    if(!empty($manual_inv)) {
+    $is_memo    = isset($_POST['is_memo']) && $_POST['is_memo'] === '1';
+    $bill_type  = $is_memo ? 'memo' : 'invoice';
+
+    if($is_memo) {
+        // MEMO bills are always auto-numbered, starting from 550
+        $memoRes = mysqli_query($conn, "SELECT MAX(CAST(SUBSTRING(invoice_no, 6) AS UNSIGNED)) AS max_no FROM invoices WHERE invoice_no LIKE 'MEMO-%'");
+        $memoRow = $memoRes ? mysqli_fetch_assoc($memoRes) : null;
+        $next_memo = (!empty($memoRow['max_no'])) ? intval($memoRow['max_no']) + 1 : 550;
+        if($next_memo < 550) $next_memo = 550;
+        $invoice_no = 'MEMO-' . $next_memo;
+    } elseif(!empty($manual_inv)) {
         $invoice_no = mysqli_real_escape_string($conn, $manual_inv);
         $dup = mysqli_query($conn, "SELECT id FROM invoices WHERE invoice_no = '$invoice_no'");
         if($dup && mysqli_num_rows($dup) > 0) {
@@ -342,7 +385,12 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
             goto skip_invoice;
         }
     } else {
-        $invoice_no = 'INV-' . date('Ymd') . '-' . rand(1000, 9999);
+        // Auto invoice number, sequential starting from 428
+        $invRes2 = mysqli_query($conn, "SELECT MAX(CAST(invoice_no AS UNSIGNED)) AS max_no FROM invoices WHERE invoice_no REGEXP '^[0-9]+$'");
+        $invRow2 = $invRes2 ? mysqli_fetch_assoc($invRes2) : null;
+        $next_inv = (!empty($invRow2['max_no'])) ? intval($invRow2['max_no']) + 1 : 428;
+        if($next_inv < 428) $next_inv = 428;
+        $invoice_no = (string)$next_inv;
     }
     $customer_gstin = mysqli_real_escape_string($conn, $_POST['customer_gstin'] ?? '');
     $created_by = $_SESSION['user_id'];
@@ -357,26 +405,34 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
         mysqli_query($conn, "ALTER TABLE invoices ADD COLUMN payment_method VARCHAR(20) DEFAULT 'Cash'");
     }
 
-    if ($is_split) {
-        if ($paid_amount < $total_amount) {
-            if ($paid_amount > 0) {
-                $payment_status = 'part';
-            } else {
-                $payment_status = 'unpaid';
-            }
-        }
+    $paid_amount += $cheque_paid + $old_gold_value;
+
+    if($paid_amount >= $total_amount && $payment_status !== 'unpaid') {
+        $payment_status = 'paid';
     }
 
-    $balance_amount = ($payment_status === 'paid') ? 0 : ($total_amount - $paid_amount);
-    if($payment_status === 'paid') $paid_amount = $total_amount;
+    $balance_amount = ($payment_status === 'paid') ? 0 : max(0, $total_amount - $paid_amount);
+    if($payment_status === 'paid') {
+        $paid_amount = $total_amount;
+    }
+
+    if (!$is_split) {
+        if ($payment_method === 'Cash') {
+            $cash_paid = $paid_amount;
+        } elseif ($payment_method === 'UPI') {
+            $upi_paid = $paid_amount;
+        } elseif (strtoupper($payment_method) === 'NEFT') {
+            $account_paid = $paid_amount;
+        }
+    }
 
     if($is_split && $paid_amount >= $total_amount) {
         $payment_status = 'paid';
         $balance_amount = 0;
     }
 
-    $invoice_query = "INSERT INTO invoices (invoice_no, customer_name, customer_mobile, customer_address, customer_gstin, gst_type, subtotal, gst_amount, total_amount, round_off, payment_status, payment_method, paid_amount, balance_amount, cash_paid, upi_paid, account_paid, due_date, created_by)
-              VALUES ('$invoice_no', '$customer_name', '$customer_mobile', '$customer_address', '$customer_gstin', '$gst_type', $subtotal, $gst_amount, $total_amount, $round_off, '$payment_status', '$payment_method', $paid_amount, $balance_amount, $cash_paid, $upi_paid, $account_paid, $due_date, $created_by)";
+    $invoice_query = "INSERT INTO invoices (invoice_no, customer_name, customer_mobile, customer_address, customer_gstin, gst_type, subtotal, gst_amount, total_amount, payment_status, payment_method, paid_amount, balance_amount, cash_paid, upi_paid, account_paid, cheque_paid, old_gold_value, due_date, created_by, bill_type)
+              VALUES ('$invoice_no', '$customer_name', '$customer_mobile', '$customer_address', '$customer_gstin', '$gst_type', $subtotal, $gst_amount, $total_amount, '$payment_status', '$payment_method', $paid_amount, $balance_amount, $cash_paid, $upi_paid, $account_paid, $cheque_paid, $old_gold_value, $due_date, $created_by, '$bill_type')";
     if(mysqli_query($conn, $invoice_query)) {
         $invoice_id = mysqli_insert_id($conn);
         $items = json_decode($_POST['items'], true);
@@ -419,11 +475,17 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
         $total_qty = 0;
         if(is_array($items)) foreach($items as $item) { $total_qty += floatval($item['quantity'] ?? 0); }
 
-        $success = "&#10003; Invoice created successfully! Invoice No: $invoice_no | Amount: &#8377;" . number_format($total_amount, 2);
+        if($bill_type === 'memo') {
+            $success = "&#10003; MEMO created successfully! MEMO No: " . str_replace('MEMO-', '', $invoice_no) . " | Amount: &#8377;" . number_format($total_amount, 2);
+        } else {
+            $success = "&#10003; Invoice created successfully! Invoice No: $invoice_no | Amount: &#8377;" . number_format($total_amount, 2);
+        }
         $last_invoice_no       = $invoice_no;
+        $last_bill_type        = $bill_type;
         $last_customer_name    = $customer_name;
         $last_customer_mobile  = $customer_mobile;
         $last_customer_address = $customer_address;
+        $last_customer_gstin   = $customer_gstin;
         $last_gst_type         = $gst_type;
         $last_making_charge    = $making_charge;
         $last_making_charge_amount = $making_charge_amount;
@@ -446,7 +508,8 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
         $last_balance_amount   = $balance_amount;
         $last_cash_paid        = $cash_paid;
         $last_upi_paid         = $upi_paid;
-        $last_account_paid     = $account_paid;
+        $last_cheque_paid      = $cheque_paid;
+        $last_old_gold_value   = $old_gold_value;
         $last_is_split         = $is_split;
     } else {
         $error = "&#10007; Error: " . mysqli_error($conn);
@@ -459,7 +522,11 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Billing - Maa Gouri Jewellers</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="Billing and Invoice Management for Gouri Jewellers">
+    <meta name="keywords" content="Gouri Jewellers, Billing, Invoice, GST, Jewellery Shop">
+    <meta name="author" content="MANU GUPTA">
+    <title>Billing - Gouri Jewellers</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="assets/css/theme.css">
@@ -590,23 +657,10 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['create_invoice'])) {
         .jewel-sparkle { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; animation: sparkleFloat linear infinite; }
         @keyframes sparkleFloat { 0%{transform:translateY(100vh) scale(0);opacity:0} 10%{opacity:1} 90%{opacity:0.5} 100%{transform:translateY(-10vh) scale(1);opacity:0} }
 
-        @page { size: A4 portrait; margin: 8mm; }
         @media print {
-            html, body { width: 210mm; min-height: 297mm; margin: 0; padding: 0; }
             body * { visibility: hidden; }
             .print-invoice, .print-invoice * { visibility: visible; }
-            .print-invoice { position: relative; left: auto; top: auto; width: auto; max-width: 210mm; margin: 0; padding: 0; }
-            .print-invoice > div { width: 100%; max-width: 210mm; }
-            .print-invoice { page-break-inside: avoid !important; }
-            .print-invoice * { page-break-inside: avoid !important; }
-            .print-invoice { page-break-after: avoid !important; }
-            .print-invoice { break-inside: avoid !important; }
-            .print-invoice { overflow: visible !important; }
-            .print-invoice { box-shadow: none !important; }
-            .print-invoice { background: #fff !important; }
-            .print-invoice table { font-size: 9.5px !important; }
-            .print-invoice th, .print-invoice td { padding: 4px 6px !important; }
-            .print-invoice .print-invoice { margin: 0 !important; }
+            .print-invoice { position: absolute; left: 0; top: 0; width: 100%; }
             .no-print { display: none !important; }
             .sidebar, .sidebar-overlay, nav.nav-gold { display: none !important; }
         }
@@ -656,13 +710,13 @@ window.addEventListener('load', function() {
 
 <!-- Loading Overlay -->
 <div id="loadingOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;justify-content:center;align-items:center;overflow:hidden;transition:opacity 0.6s ease,visibility 0.6s ease;background:radial-gradient(ellipse at 50% 60%, #1a0a00 0%, #0d0500 100%);">
-    <!-- background diamonds removed to keep only central gem -->
     <div style="position:relative;z-index:10;text-align:center;">
-        <!-- Logo -->
-        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;display:flex;align-items:center;justify-content:center;">
-            <img src="assets/images/moti-removebg-preview.png" alt="Logo" style="max-width:100%;max-height:100%;animation:gemGlowPulse 2s ease-in-out infinite;">
+        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;">
+            <div style="position:absolute;inset:-12px;border-radius:50%;border:2px solid rgba(214,139,22,0.4);animation:haloPulse 1.5s ease-in-out infinite;"></div>
+            <div style="position:absolute;inset:-24px;border-radius:50%;border:1px solid rgba(214,139,22,0.2);animation:haloPulse 1.5s ease-in-out infinite 0.5s;"></div>
+            <img src="./assets/images/moti-removebg-preview.png" alt="Gouri Jewellers Logo" style="width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 0 8px #d68b16);animation:gemGlowPulse 1.5s ease-in-out infinite;">
         </div>
-        <div style="color:#d68b16;font-size:22px;letter-spacing:6px;font-family:'Playfair Display',serif;margin-bottom:6px;animation:titleGold 2s ease infinite alternate;">MAA GOURI JEWELLERS</div>
+        <div style="color:#d68b16;font-size:22px;letter-spacing:6px;font-family:'Playfair Display',serif;margin-bottom:6px;animation:titleGold 2s ease infinite alternate;">GOURI JEWELLERS</div>
         <p style="color:rgba(201,169,110,0.7);font-size:10px;letter-spacing:4px;text-transform:uppercase;margin-bottom:24px;">Crafting Timeless Elegance</p>
         <div style="width:200px;height:3px;background:rgba(255,255,255,0.08);border-radius:3px;margin:0 auto 16px;overflow:hidden;">
             <div style="height:100%;width:35%;background:linear-gradient(90deg,#7a4e0a,#d68b16,#f5c842);border-radius:3px;animation:barSlide 1.8s ease-in-out infinite;"></div>
@@ -691,24 +745,54 @@ window.addEventListener('load', function() {
         if(!$logo_found) echo '<i class="fas fa-gem" style="color:#fff;font-size:30px;flex-shrink:0;"></i>';
         ?>
         <div class="sidebar-logo-text">
-            <h2>MAA GOURI JEWELLERS</h2>
+            <h2>GOURI JEWELLERS</h2>
             <p>Premium Since 2026</p>
         </div>
     </div>
     <nav class="sidebar-nav">
         <div class="sidebar-section-label">Main Menu</div>
-        <a href="index.php"><i class="fas fa-home"></i> HOME</a>
-        <a href="billing.php" class="active"><i class="fas fa-receipt"></i> BILLING</a>
-        <a href="stock.php"><i class="fas fa-boxes"></i> STOCK</a>
-        <a href="customers.php"><i class="fas fa-users"></i> CUSTOMERS</a>
+
+        <a href="index.php" >
+            <i class="fas fa-home"></i> HOME
+        </a>
+        <a href="billing.php">
+            <i class="fas fa-receipt" class="active"></i> BILLING
+        </a>
+        <a href="stock.php">
+            <i class="fas fa-boxes"></i> STOCK
+        </a>
+        <a href="customers.php">
+            <i class="fas fa-users"></i> CUSTOMERS
+        </a>
+
         <div class="sidebar-divider"></div>
         <div class="sidebar-section-label">Analytics</div>
-        <a href="reports.php"><i class="fas fa-chart-bar"></i> REPORTS</a>
-        <a href="income_expenses.php"><i class="fas fa-chart-line"></i> INCOME &amp; EXP</a>
+
+        <a href="reports.php">
+            <i class="fas fa-chart-bar"></i> REPORTS
+        </a>
+        <a href="income_expenses.php">
+            <i class="fas fa-chart-line"></i> INCOME & EXP
+        </a>
+
         <div class="sidebar-divider"></div>
         <div class="sidebar-section-label">Tools</div>
-        <a href="whatsapp_automation.php"><i class="fab fa-whatsapp"></i> WHATSAPP</a>
-        <a href="sbook.php"><i class="fas fa-book"></i> karigori</a>
+
+        <a href="whatsapp_automation.php">
+            <i class="fab fa-whatsapp"></i> WHATSAPP
+        </a>
+        <!-- <a href="sbook.php">
+            <i class="fas fa-book"></i> SANCHAY
+        </a> -->
+        <a href="purchase.php">
+            <i class="fas fa-book"></i> PURCHASE
+        </a>
+        <a href="contacts.php">
+            <i class="fas fa-address-book"></i> CONTACTS
+        </a>
+        <a href="accounts.php">
+            <i class="fas fa-calculator"></i> ACCOUNTS
+        </a>
     </nav>
     <div class="sidebar-user">
         <div class="sidebar-user-info">
@@ -770,7 +854,8 @@ window.addEventListener('load', function() {
     </div>
 
     <!-- ══ PAYMENT DUE TODAY SECTION ══ -->
-    <?php if(!empty($due_today_bills)): ?>
+
+<?php if(!empty($due_today_bills)): ?>
     <div class="due-today-section">
         <!-- Header -->
         <div class="due-today-header">
@@ -859,7 +944,7 @@ window.addEventListener('load', function() {
                     </button>
                     <button type="button" class="due-action-btn due-btn-paid"
                         id="paid-btn-<?php echo $safe_inv; ?>"
-                        onclick="markDueAsPaid('<?php echo $safe_inv; ?>')">
+                        onclick="markDueAsPaid('<?php echo $safe_inv; ?>', '<?php echo $safe_name; ?>', '<?php echo $safe_mob; ?>', <?php echo $db['total_amount']; ?>, <?php echo $db['paid_amount']; ?>, <?php echo $balance; ?>)">
                         &#10003; Mark as Paid
                     </button>
                 </div>
@@ -867,7 +952,155 @@ window.addEventListener('load', function() {
             <?php endforeach; ?>
         </div>
     </div>
-    <?php endif; ?>
+<?php endif; ?>
+
+
+<!-- ============================================================ -->
+<!-- NEW: Payment Modal (paste once, anywhere after the section    -->
+<!-- above — e.g. right before </body>)                            -->
+<!-- ============================================================ -->
+
+<div id="paymentModalOverlay" class="payment-modal-overlay" onclick="if(event.target===this) closePaymentModal()">
+  <div class="payment-modal">
+    <div class="payment-modal-header">
+      <h3>Mark Payment</h3>
+      <button onclick="closePaymentModal()">&times;</button>
+    </div>
+    <div class="payment-modal-body">
+      <div style="font-weight:700;color:#991b1b;" id="pmCustomerName"></div>
+      <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;" id="pmCustomerMob"></div>
+      <div class="pm-rows">
+        <div><span>Invoice Total</span><span id="pmTotal"></span></div>
+        <div><span>Already Paid</span><span id="pmAlreadyPaid"></span></div>
+        <div><span>Balance Due</span><span id="pmBalance"></span></div>
+      </div>
+      <label style="font-size:12px;color:#6b7280;display:block;margin-top:10px;">Amount Receiving Now (&#8377;)</label>
+      <input type="number" id="pmAmountInput" min="0" step="0.01" oninput="updateRemainingPreview()">
+      <div style="font-size:13px;font-weight:600;color:#dc2626;">
+        Remaining After This Payment: <span id="pmRemainingPreview"></span>
+      </div>
+      <div id="pmError" style="color:#dc2626;font-size:12px;margin-top:6px;"></div>
+    </div>
+    <div class="payment-modal-footer">
+      <button onclick="closePaymentModal()">Cancel</button>
+      <button onclick="submitPayment()">Confirm Payment</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================ -->
+<!-- NEW: CSS — paste inside your existing <style> tag              -->
+<!-- ============================================================ -->
+<style>
+.payment-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;}
+.payment-modal{background:#fff;border-radius:12px;width:360px;max-width:90%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.2);}
+.payment-modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+.payment-modal-header h3{margin:0;font-family:'Playfair Display',serif;color:#991b1b;}
+.payment-modal-header button{background:none;border:none;font-size:20px;cursor:pointer;color:#9ca3af;}
+.pm-rows div{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:#374151;}
+#pmAmountInput{width:100%;padding:10px;border:1px solid #e5e7eb;border-radius:8px;font-size:15px;margin:8px 0;box-sizing:border-box;}
+.payment-modal-footer{display:flex;gap:10px;margin-top:14px;}
+.payment-modal-footer button{flex:1;padding:10px;border-radius:8px;border:none;cursor:pointer;font-weight:600;}
+.payment-modal-footer button:first-child{background:#f3f4f6;color:#374151;}
+.payment-modal-footer button:last-child{background:#059669;color:#fff;}
+</style>
+
+
+<!-- ============================================================ -->
+<!-- NEW: JS — paste inside your existing <script> tag              -->
+<!-- ============================================================ -->
+<script>
+let currentPaymentData = {};
+
+function markDueAsPaid(invoiceNo, customerName, mobile, totalAmount, paidAmount, balanceAmount) {
+  currentPaymentData = {
+    invoice_no: invoiceNo,
+    total: parseFloat(totalAmount),
+    paid: parseFloat(paidAmount),
+    balance: parseFloat(balanceAmount)
+  };
+
+  document.getElementById('pmCustomerName').textContent = customerName;
+  document.getElementById('pmCustomerMob').textContent = mobile;
+  document.getElementById('pmTotal').textContent = '₹' + currentPaymentData.total.toFixed(2);
+  document.getElementById('pmAlreadyPaid').textContent = '₹' + currentPaymentData.paid.toFixed(2);
+  document.getElementById('pmBalance').textContent = '₹' + currentPaymentData.balance.toFixed(2);
+
+  const input = document.getElementById('pmAmountInput');
+  input.value = currentPaymentData.balance.toFixed(2);
+  input.max = currentPaymentData.balance;
+  document.getElementById('pmError').textContent = '';
+  updateRemainingPreview();
+
+  document.getElementById('paymentModalOverlay').style.display = 'flex';
+}
+
+function closePaymentModal() {
+  document.getElementById('paymentModalOverlay').style.display = 'none';
+}
+
+function updateRemainingPreview() {
+  const amount = parseFloat(document.getElementById('pmAmountInput').value) || 0;
+  const remaining = Math.max(currentPaymentData.balance - amount, 0);
+  document.getElementById('pmRemainingPreview').textContent = '₹' + remaining.toFixed(2);
+}
+
+function submitPayment() {
+  const amount = parseFloat(document.getElementById('pmAmountInput').value);
+  const errorEl = document.getElementById('pmError');
+  errorEl.textContent = '';
+
+  if (isNaN(amount) || amount <= 0) {
+    errorEl.textContent = 'Please enter a valid amount.';
+    return;
+  }
+  if (amount > currentPaymentData.balance + 0.01) {
+    errorEl.textContent = 'Amount cannot exceed balance due.';
+    return;
+  }
+
+  const btn = document.querySelector('.payment-modal-footer button:last-child');
+  btn.disabled = true;
+  btn.textContent = 'Processing...';
+
+  fetch(window.location.pathname + '?action=mark_paid', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    credentials: 'same-origin',
+    body: 'invoice_no=' + encodeURIComponent(currentPaymentData.invoice_no) + '&amount=' + encodeURIComponent(amount)
+  })
+  .then(res => res.json())
+  .then(data => {
+    btn.disabled = false;
+    btn.textContent = 'Confirm Payment';
+    if (data.success) {
+      closePaymentModal();
+      showNotif('✅ ' + data.message, 'success');
+      if (data.fully_paid) {
+        const card = document.getElementById('duecard-' + currentPaymentData.invoice_no);
+        if (card) {
+          card.style.transition = 'opacity 0.3s, height 0.3s, margin 0.3s, padding 0.3s';
+          card.style.opacity = '0';
+          card.style.height = '0';
+          card.style.margin = '0';
+          card.style.padding = '0';
+          setTimeout(() => { card.remove(); hideDueTodaySectionIfEmpty(); }, 300);
+        }
+      } else {
+        location.reload();
+      }
+    } else {
+      errorEl.textContent = data.message || 'Something went wrong.';
+    }
+  })
+  .catch(() => {
+    btn.disabled = false;
+    btn.textContent = 'Confirm Payment';
+    errorEl.textContent = 'Network error. Try again.';
+  });
+}
+</script>
     <!-- ══ END PAYMENT DUE TODAY SECTION ══ -->
 
     <!-- Search Bill by Mobile -->
@@ -903,19 +1136,24 @@ window.addEventListener('load', function() {
 
                     <!-- Invoice Number -->
                     <div class="mb-4 p-3 rounded-xl" style="background:rgba(214,139,22,0.05);border:1px solid rgba(214,139,22,0.2);">
-                        <div class="flex items-center gap-3 mb-2">
+                        <div class="flex items-center gap-3 mb-2 flex-wrap">
                             <label class="text-sm font-semibold" style="color:#7a4e0a;">&#128290; Invoice Number</label>
-                            <label class="flex items-center gap-2 cursor-pointer text-xs" style="color:#9ca3af;">
+                            <label id="manualInvoiceLabel" class="flex items-center gap-2 cursor-pointer text-xs" style="color:#9ca3af;">
                                 <input type="checkbox" id="manualInvoiceToggle" onchange="toggleManualInvoice()" style="accent-color:#d68b16;">
                                 Enter Manual Invoice No.?
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer text-xs" style="color:#cc4400;font-weight:600;">
+                                <input type="checkbox" id="memoBillToggle" name="is_memo" value="1" onchange="toggleMemoBill()" style="accent-color:#cc4400;">
+                                MEMO Bill? (No Invoice No.)
                             </label>
                         </div>
                         <div id="manualInvoiceDiv" style="display:none;">
                             <input type="text" name="manual_invoice_no" id="manualInvoiceNo"
-                                class="jewel-input w-full rounded-lg px-3 py-2 text-sm" placeholder="e.g. INV-2024-001">
-                            <p class="text-xs mt-1" style="color:#9ca3af;">&#9888;&#65039; If empty, auto-generated: INV-YYYYMMDD-XXXX</p>
+                                class="jewel-input w-full rounded-lg px-3 py-2 text-sm" placeholder="e.g. 428">
+                            <p class="text-xs mt-1" style="color:#9ca3af;">&#9888;&#65039; If empty, auto-generated starting from 428</p>
                         </div>
-                        <div id="autoInvoiceInfo" class="text-xs" style="color:#9ca3af;">Auto-generated (INV-YYYYMMDD-XXXX)</div>
+                        <div id="autoInvoiceInfo" class="text-xs" style="color:#9ca3af;">Auto-generated (sequential, starting from 428)</div>
+                        <div id="memoInvoiceInfo" class="text-xs" style="display:none;color:#cc4400;font-weight:600;"></div>
                     </div>
 
                     <!-- Customer Details -->
@@ -1035,7 +1273,7 @@ window.addEventListener('load', function() {
                                         <option value="Silver">Silver</option>
                                         <option value="Stone">Stone</option>
                                         <option value="Diamond">Diamond</option>
-                                        <option value="Others">Others</option>
+                                        <!-- <option value="Others">Others</option> -->
                                     </select>
                                 </div>
                                 <div>
@@ -1087,7 +1325,7 @@ window.addEventListener('load', function() {
                                 </div>
                                 <div>
                                     <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">HSN Code <span style="color:#9ca3af;">(Optional)</span></label>
-                                    <input type="text" id="manualHsn" placeholder="7108" value="7108"
+                                    <input type="text" id="manualHsn" placeholder="71131910" value="71131910"
                                         class="jewel-input w-full rounded-lg px-3 py-2 text-sm">
                                 </div>
                             </div>
@@ -1217,6 +1455,20 @@ window.addEventListener('load', function() {
                             </div>
                         </div>
 
+                        <!-- Cheque / Old Gold Value (optional, applies to any payment method) -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                            <div>
+                                <label class="block mb-1 text-xs font-semibold" style="color:#b5730e;">Cheque Amount (&#8377;) <span style="color:#9ca3af;font-weight:400;">(if any)</span></label>
+                                <input type="number" name="cheque_paid" id="chequePaidInput" value="0" step="1" min="0"
+                                    class="jewel-input w-full rounded-lg px-3 py-2 text-sm" oninput="updateBalanceFromPart()">
+                            </div>
+                            <div>
+                                <label class="block mb-1 text-xs font-semibold" style="color:#b5730e;">Customer Old Gold Value (&#8377;) <span style="color:#9ca3af;font-weight:400;">(if exchanged)</span></label>
+                                <input type="number" name="old_gold_value" id="oldGoldValueInput" value="0" step="1" min="0"
+                                    class="jewel-input w-full rounded-lg px-3 py-2 text-sm" oninput="updateBalanceFromPart()">
+                            </div>
+                        </div>
+
                         <!-- Split Payment Box -->
                         <div id="splitPaymentDiv" style="display:none;" class="split-payment-box">
                             <div class="flex items-center gap-2 mb-3">
@@ -1323,6 +1575,7 @@ window.addEventListener('load', function() {
                 </div>
                 <?php
                 $shopFields = [
+                    ['key'=>'gold24','label'=>'Gold 24K','color'=>'#cc4400','dispId'=>'shopGold24Display','inputId'=>'shopGold24Input','step'=>'1'],
                     ['key'=>'gold22','label'=>'Gold 22K','color'=>'#d68b16','dispId'=>'shopGold22Display','inputId'=>'shopGold22Input','step'=>'1'],
                     ['key'=>'gold18','label'=>'Gold 18K','color'=>'#b5730e','dispId'=>'shopGold18Display','inputId'=>'shopGold18Input','step'=>'1'],
                     ['key'=>'silver','label'=>'Silver',  'color'=>'#6b7280','dispId'=>'shopSilverDisplay', 'inputId'=>'shopSilverInput', 'step'=>'0.5'],
@@ -1352,6 +1605,7 @@ window.addEventListener('load', function() {
                     <div class="text-xs font-semibold mb-2" style="color:#b5730e;">&#9878;&#65039; Shop Value Calculator</div>
                     <div class="flex gap-2">
                         <select id="shopMetalSelect" class="jewel-input flex-1 rounded-lg px-2 py-1 text-xs" onchange="calcShopValue()">
+                            <option value="gold24">Gold 24K</option>
                             <option value="gold22">Gold 22K</option>
                             <option value="gold18">Gold 18K</option>
                             <option value="silver">Silver</option>
@@ -1364,34 +1618,9 @@ window.addEventListener('load', function() {
                 </div>
                 <p class="text-xs mt-2 text-center" style="color:#9ca3af;" id="shopRateLastSaved">Rates saved in your browser</p>
             </div>
+            <br>
 
-            <!-- EMI Calculator -->
-            <div class="jewel-card p-4 sm:p-6 sticky top-24">
-                <h3 class="text-lg font-bold mb-4" style="color:#800020;font-family:'Playfair Display',serif;">
-                    <i class="fas fa-calculator mr-2" style="color:#d68b16;"></i> EMI Calculator
-                </h3>
-                <div class="space-y-3">
-                    <div>
-                        <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Loan Amount (&#8377;)</label>
-                        <input type="number" id="loanAmount" class="jewel-input w-full rounded-lg px-3 py-2 text-sm" placeholder="Enter amount">
-                    </div>
-                    <div>
-                        <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Interest Rate (%/year)</label>
-                        <input type="number" id="interestRate" value="12" class="jewel-input w-full rounded-lg px-3 py-2 text-sm">
-                    </div>
-                    <div>
-                        <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Tenure (Months)</label>
-                        <input type="number" id="tenure" value="6" class="jewel-input w-full rounded-lg px-3 py-2 text-sm">
-                    </div>
-                    <button type="button" onclick="calculateEMI()" class="btn-gold w-full py-2 rounded-lg font-semibold">Calculate EMI</button>
-                    <div id="emiResult" class="text-center p-3 rounded-lg hidden"
-                        style="background:linear-gradient(135deg,rgba(214,139,22,0.08),rgba(128,0,32,0.05));border:1px solid rgba(214,139,22,0.2);">
-                        <p class="text-xs font-semibold" style="color:#7a4e0a;">Monthly EMI:</p>
-                        <p class="text-2xl font-bold" style="color:#800020;" id="emiAmount">&#8377;0</p>
-                        <p class="text-xs mt-1" style="color:#b5730e;">Total Payment: <span id="totalPayment">&#8377;0</span></p>
-                    </div>
-                </div>
-            </div>
+          
 
             <!-- Live Metal Rates -->
             <div class="jewel-card p-4 sm:p-5 mt-4">
@@ -1443,8 +1672,38 @@ window.addEventListener('load', function() {
                 </div>
                 <p class="text-xs mt-2 text-center" style="color:#9ca3af;" id="metalUpdateInfo">Fetching Indian market rates...</p>
             </div>
-        </div>
+       <br>
+         <!-- EMI Calculator -->
+            <div class="jewel-card p-4 sm:p-6 sticky top-24">
+                <h3 class="text-lg font-bold mb-4" style="color:#800020;font-family:'Playfair Display',serif;">
+                    <i class="fas fa-calculator mr-2" style="color:#d68b16;"></i> EMI Calculator
+                </h3>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Loan Amount (&#8377;)</label>
+                        <input type="number" id="loanAmount" class="jewel-input w-full rounded-lg px-3 py-2 text-sm" placeholder="Enter amount">
+                    </div>
+                    <div>
+                        <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Interest Rate (%/year)</label>
+                        <input type="number" id="interestRate" value="12" class="jewel-input w-full rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block mb-1 text-xs font-semibold" style="color:#7a4e0a;">Tenure (Months)</label>
+                        <input type="number" id="tenure" value="6" class="jewel-input w-full rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <button type="button" onclick="calculateEMI()" class="btn-gold w-full py-2 rounded-lg font-semibold">Calculate EMI</button>
+                    <div id="emiResult" class="text-center p-3 rounded-lg hidden"
+                        style="background:linear-gradient(135deg,rgba(214,139,22,0.08),rgba(128,0,32,0.05));border:1px solid rgba(214,139,22,0.2);">
+                        <p class="text-xs font-semibold" style="color:#7a4e0a;">Monthly EMI:</p>
+                        <p class="text-2xl font-bold" style="color:#800020;" id="emiAmount">&#8377;0</p>
+                        <p class="text-xs mt-1" style="color:#b5730e;">Total Payment: <span id="totalPayment">&#8377;0</span></p>
+                    </div>
+                </div>
+            </div>
+ </div>
     </div><!-- /grid -->
+
+ 
 
     <!-- PDF Upload (after invoice creation) -->
     <?php if(!empty($last_invoice_no)): ?>
@@ -1467,176 +1726,465 @@ window.addEventListener('load', function() {
 <!-- PRINT INVOICE -->
 <?php if(!empty($success) && !empty($last_invoice_no) && $last_total > 0): ?>
 <?php
-// Ensure we have latest stored payment values for the printed invoice
 if(!empty($last_invoice_no)) {
     $inv_no_esc = mysqli_real_escape_string($conn, $last_invoice_no);
-    $invRes = mysqli_query($conn, "SELECT cash_paid, upi_paid, account_paid, round_off, balance_amount, due_date, payment_method, paid_amount, total_amount FROM invoices WHERE invoice_no = '$inv_no_esc' LIMIT 1");
+    $invRes = mysqli_query($conn, "SELECT cash_paid, upi_paid, account_paid, cheque_paid, old_gold_value, round_off, balance_amount, due_date, payment_method, paid_amount, total_amount, customer_gstin FROM invoices WHERE invoice_no = '$inv_no_esc' LIMIT 1");
     if($invRes && mysqli_num_rows($invRes) > 0) {
         $invRow = mysqli_fetch_assoc($invRes);
-        $last_cash_paid = floatval($invRow['cash_paid'] ?? $last_cash_paid);
-        $last_upi_paid = floatval($invRow['upi_paid'] ?? $last_upi_paid);
-        $last_account_paid = floatval($invRow['account_paid'] ?? $last_account_paid);
-        $last_round_off = floatval($invRow['round_off'] ?? $last_round_off);
+        $last_cash_paid      = floatval($invRow['cash_paid']      ?? $last_cash_paid);
+        $last_upi_paid       = floatval($invRow['upi_paid']       ?? $last_upi_paid);
+        $last_account_paid   = floatval($invRow['account_paid']   ?? 0);
+        $last_cheque_paid    = floatval($invRow['cheque_paid']    ?? $last_cheque_paid);
+        $last_old_gold_value = floatval($invRow['old_gold_value'] ?? $last_old_gold_value);
+        $last_round_off      = floatval($invRow['round_off']      ?? $last_round_off);
+        $last_customer_gstin = trim($invRow['customer_gstin']  ?? $last_customer_gstin);
         $last_balance_amount = floatval($invRow['balance_amount'] ?? $last_balance_amount);
-        $last_due_date = !empty($invRow['due_date']) ? $invRow['due_date'] : '';
+        $last_due_date       = !empty($invRow['due_date']) ? $invRow['due_date'] : '';
         $last_payment_method = $invRow['payment_method'] ?? $last_payment_method;
-        $last_paid_amount = floatval($invRow['paid_amount'] ?? $last_paid_amount);
-        $last_total = floatval($invRow['total_amount'] ?? $last_total);
+        $last_paid_amount    = floatval($invRow['paid_amount']    ?? $last_paid_amount);
+        $last_total          = floatval($invRow['total_amount']   ?? $last_total);
     }
 }
+$upi_card          = $last_upi_paid + ($last_account_paid ?? 0);
+$net_amount        = $last_subtotal;
+$gross_amount      = $last_total;
+$processing_charge = $last_making_charge_amount;
+$others_charge_val = $last_hallmark - $last_discount;
+$last_customer_gstin = $last_customer_gstin ?? '';
 ?>
-<div class="print-invoice" style="display:block;">
-    <div style="max-width:840px;margin:0 auto;background:#fff7d6;border:1px solid #d8b34f;border-radius:10px;overflow:hidden;font-family:Georgia, 'Times New Roman', serif;color:#231807;position:relative;padding:16px 18px;">
-        <div style="position:relative;z-index:2;">
-            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px;text-align:center;">
-                <div style="width:100%;padding:18px 20px;border-radius:14px;background:linear-gradient(135deg,#ffef7a,#f7df7a);border:1px solid #b07b00;box-shadow:0 6px 18px rgba(0,0,0,0.12);">
-                    <div style="font-size:32px;font-weight:900;color:#6b4a08;letter-spacing:2px;text-transform:uppercase;line-height:1.05;">MAA GOURI JEWELLERS</div>
-                </div>
-                <div style="font-size:12px;font-weight:700;color:#4d3a0f;letter-spacing:1px;">Gold • Gems • Diamond • Platinum</div>
-            </div>
 
-            <div style="text-align:center;font-size:12px;font-weight:700;color:#5e3f00;margin-bottom:8px;">TAX INVOICE</div>
-            <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:2px solid #b07b00;border-bottom:2px solid #b07b00;margin-bottom:12px;">
-                <div style="flex:1;padding:10px;font-size:10px;line-height:1.4;color:#5e4b11;">
-                    <div style="font-size:16px;font-weight:900;color:#5e3f00;">Suraj Chandra</div>
-                    <div style="margin-top:4px;">Sukantapally mathpara</div>
-                    <div style="margin-top:4px;"><strong>GSTIN:</strong> KKKB123</div>
-                    <div style="margin-top:4px;">State Name: West Bengal, Code: 19</div>
-                    <div>Contact: 09064292987</div>
-                </div>
-                <div style="width:220px;padding:10px;font-size:10px;line-height:1.6;color:#231807;text-align:right;">
-                    <div><strong>Invoice No:</strong> <?php echo htmlspecialchars($last_invoice_no); ?></div>
-                    <div style="margin-top:6px;"><strong>Dated:</strong> <?php echo date('d-m-Y'); ?></div>
-                    <div style="margin-top:6px;"><strong>Unit:</strong> 1</div>
-                </div>
-            </div>
+<style>
+@page { size: A4; margin: 8mm; }
+@media print {
+  html, body {
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body > :not(#mgInvoicePrint) {
+    display: none !important;
+  }
+  #mgInvoicePrint {
 
-            <table style="width:100%;border-collapse:collapse;font-size:10.5px;color:#241b11;margin-bottom:0;">
-                <thead>
-                    <tr style="background:#fff3c5;">
-                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:left;">DESCRIPTION</th>
-                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:center;width:80px;">HSN CODE</th>
-                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:center;width:80px;">GROSS WT.</th>
-                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:center;width:80px;">NETT WT.</th>
-                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:80px;">RATE ₹/gm</th>
-                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:90px;">PROCESSING CHARGES</th>
-                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:90px;">H.M. CHARGES</th>
-                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:90px;">DISCOUNT</th>
-                        <th style="border:1px solid #9b8561;padding:6px 5px;text-align:right;width:100px;">NET TOTAL</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php $counter = 1; $isFirstItem = true; foreach($last_items as $item):
-                        $item_label = htmlspecialchars($item['name']);
-                        if(!empty($item['item_type']) && $item['item_type'] !== 'Other') {
-                            $item_label .= '<br><small style="color:#5e4b11;">' . htmlspecialchars($item['item_type']) . '</small>';
-                        }
-                        $quantity = floatval($item['quantity'] ?? 0);
-                        $rate = floatval($item['price'] ?? 0);
-                        $processingCharge = $isFirstItem ? $last_making_charge_amount : null;
-                        $hmCharge = $isFirstItem ? $last_hallmark : null;
-                        $itemDiscount = $isFirstItem ? $last_discount : null;
-                    ?>
-                    <tr>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;vertical-align:top;"><?php echo $item_label; ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo htmlspecialchars($item['hsn'] ?? '7108'); ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo $quantity > 0 ? number_format($quantity,3) : '&#8212;'; ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo $quantity > 0 ? number_format($quantity,3) : '&#8212;'; ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo $rate > 0 ? number_format($rate,2) : ''; ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo $isFirstItem && $processingCharge !== null ? number_format($processingCharge,2) : '&mdash;'; ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo $isFirstItem && $hmCharge !== null ? number_format($hmCharge,2) : '&mdash;'; ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo $isFirstItem && $itemDiscount !== null ? '- ' . number_format($itemDiscount,2) : '&mdash;'; ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo number_format($item['total'],2); ?></td>
-                    </tr>
-                    <?php $isFirstItem = false; endforeach; ?>
-                </tbody>
-                <tfoot>
-                    <tr style="background:#fff3c5;font-weight:700;">
-                        <td colspan="2" style="border:1px solid #9b8561;padding:6px 5px;text-align:right;">Total:</td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo number_format($last_total_quantity,3); ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:center;"><?php echo number_format($last_total_quantity,3); ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;">&mdash;</td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo number_format($last_making_charge_amount,2); ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo number_format($last_hallmark,2); ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;">- <?php echo number_format($last_discount,2); ?></td>
-                        <td style="border:1px solid #9b8561;padding:6px 5px;text-align:right;"><?php echo number_format($last_total,2); ?></td>
-                    </tr>
-                </tfoot>
-            </table>
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 210mm !important;
+    min-height: auto !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    border: none !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+    transform-origin: top left !important;
+ 
+  }
+  #mgInvoicePrint, #mgInvoicePrint * {
+    visibility: visible !important;
+    color: inherit !important;
+    box-sizing: border-box !important;
+  }
+  #mgInvoicePrint img {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    object-fit: contain !important;
+    display: block !important;
+  }
+  #mgInvoicePrint > div:first-child {
+    overflow: visible !important;
+  }
+  #mgInvoicePrint table, #mgInvoicePrint tr, #mgInvoicePrint td, #mgInvoicePrint th, #mgInvoicePrint div {
+    page-break-inside: avoid !important;
+  }
+  #mgInvoicePrint th, #mgInvoicePrint td {
+    padding: 4px !important;
+    font-size: 9px !important;
+  }
+  #mgInvoicePrint .no-print { display: none !important; }
+  #mgInvoicePrint .split-payment-box,
+  #mgInvoicePrint .payment-modal,
+  #mgInvoicePrint .due-card { page-break-inside: avoid !important; }
+}
+#mgInvoicePrint {
+  font-family: Arial, Helvetica, sans-serif;
+  width: min(100%, 780px);
+  max-width: 210mm;
+  margin: 32px auto 0;
+  background: #ffffff;
+  border: 2px solid #cc4400;
+  box-sizing: border-box;
+  color: #222;
+  font-size: 12px;
+  position: relative;
+  overflow: hidden;
+}
+#mgInvoicePrint * { box-sizing: border-box; }
+#mgInvoicePrint > * { position: relative; z-index: 1; }
+</style>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
-                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
-                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">INSTRUMENT NO.</div>
-                    <div style="font-size:10px;color:#5e4b11;">Not Applicable</div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;font-size:10px;">
-                        <div style="background:#fff;border:1px solid #d8b34f;padding:8px;text-align:center;">TYPE<br><strong><?php echo htmlspecialchars($last_payment_method ?: 'Cash'); ?></strong></div>
-                        <div style="background:#fff;border:1px solid #d8b34f;padding:8px;text-align:center;">DATE<br><strong><?php echo date('d-m-Y'); ?></strong></div>
-                        <div style="grid-column:span 2;background:#fff;border:1px solid #d8b34f;padding:8px;text-align:center;">AMOUNT<br><strong>Rs <?php echo number_format($last_total,2); ?></strong></div>
-                    </div>
-                </div>
-                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
-                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">NET AMOUNT ₹</div>
-                    <?php $net_amount = $last_total + $last_discount - $last_cgst_amount - $last_sgst_amount - $last_round_off; ?>
-                    <div style="font-size:18px;font-weight:800;color:#800020;">Rs <?php echo number_format($net_amount,2); ?></div>
-                    <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:10px;">
-                        <div style="background:#fff;border:1px solid #d8b34f;padding:6px;">DISCOUNT<br><strong>Rs <?php echo number_format($last_discount,2); ?></strong></div>
-                        <div style="background:#fff;border:1px solid #d8b34f;padding:6px;">OUTPUT CGST<br><strong>Rs <?php echo number_format($last_cgst_amount,2); ?></strong></div>
-                        <div style="background:#fff;border:1px solid #d8b34f;padding:6px;">OUTPUT SGST<br><strong>Rs <?php echo number_format($last_sgst_amount,2); ?></strong></div>
-                        <div style="background:#fff;border:1px solid #d8b34f;padding:6px;">ROUND OFF<br><strong>Rs <?php echo number_format($last_round_off,2); ?></strong></div>
-                    </div>
-                </div>
-            </div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
-                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
-                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">GROSS AMOUNT ₹</div>
-                    <div style="font-size:20px;font-weight:800;color:#000;">Rs <?php echo number_format($last_total + $last_discount,2); ?></div>
-                </div>
-                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
-                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">ADVANCE</div>
-                    <div style="font-size:18px;font-weight:700;color:#065f46;">Rs <?php echo number_format($last_paid_amount,2); ?></div>
-                    <div style="font-size:10px;margin-top:4px;">Amount Paid in Full</div>
-                </div>
-            </div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
-                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
-                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">PAYMENT BREAKUP</div>
-                    <?php $last_upi_card_amount = $last_upi_paid + $last_account_paid; ?>
-                    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;">Cash<span>Rs <?php echo number_format($last_cash_paid,2); ?></span></div>
-                    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;">UPI/Card<span>Rs <?php echo number_format($last_upi_card_amount,2); ?></span></div>
-                    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;">Due Amount<span>Rs <?php echo number_format($last_balance_amount,2); ?></span></div>
-                    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:10px;">Date of Pay<span><?php echo !empty($last_due_date) ? date('d-m-Y', strtotime($last_due_date)) : 'N/A'; ?></span></div>
-                </div>
-                <div style="border:2px solid #9b8561;border-radius:10px;background:#fff7d6;padding:10px;">
-                    <div style="font-size:11px;font-weight:800;margin-bottom:8px;">AMOUNT IN WORDS</div>
-                    <div style="font-size:10px;line-height:1.4;">Rupees <?php echo convertNumberToWords($last_total); ?> only.</div>
-                </div>
-            </div>
-
-            <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-top:18px;gap:12px;">
-                <div style="min-width:240px;font-size:10.5px;">
-                    <div style="font-weight:800;margin-bottom:6px;">CUSTOMER'S SIGNATURE</div>
-                    <div style="height:66px;border-bottom:1px solid #9d8b67;width:100%;"></div>
-                </div>
-                <div style="min-width:260px;text-align:right;font-size:10.5px;">
-                    <div style="font-weight:800;">for MAA GOURI JEWELLERS</div>
-                    <div style="margin-top:42px;border-top:1px solid #9d8b67;padding-top:4px;">Authorised Signatory</div>
-                </div>
-            </div>
-
-            <div style="font-size:9.5px;text-align:center;margin-top:14px;color:#5e4b11;">
-                SUBJECT TO PASCHIM MEDINIPUR JURISDICTION<br>This is a Computer Generated Invoice
-            </div>
-        </div>
-    </div>
-    <div style="text-align:center;margin-top:20px;" class="no-print">
-        <button onclick="window.print()"
-            style="background:linear-gradient(135deg,#800020,#d68b16);color:#fff;border:none;padding:12px 36px;border-radius:8px;cursor:pointer;font-weight:bold;font-size:15px;letter-spacing:1px;">
-            &#128424;&#65039; Print Invoice
-        </button>
-    </div>
+<div id="mgInvoicePrint">
+  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;opacity:0.08;">
+    <img src="assets/images/moti-removebg-preview.png" alt="" style="width:500%;max-width:650px;height:auto;object-fit:contain;filter:grayscale(1);">
 </div>
+
+  <!-- TOP HEADER IMAGE -->
+  <div style="line-height:0; overflow:hidden;">
+    <img src="assets/images/copy.jpeg" alt="Maa Gouri Jewellers Header"
+         style="width:100%;display:block;height:auto;max-height:none;object-fit:contain;"
+         onerror="this.style.display='none'">
+  </div>
+
+  <!-- MEMO NO + DATE -->
+  <div style="display:flex;align-items:center;justify-content:space-between;
+              padding:6px 12px; background:#fff;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="font-size:20px;font-weight:900;color:#cc4400;
+                  border:1px solid #cc0000;min-width:120px;padding:3px 10px;border-radius:3px;">
+        <?php if(($last_bill_type ?? '') === 'memo'): ?>
+          MEMO <?php echo htmlspecialchars(str_replace('MEMO-', '', $last_invoice_no)); ?>
+        <?php else: ?>
+          <?php echo htmlspecialchars($last_invoice_no); ?>
+        <?php endif; ?>
+      </div>
+    </div>
+    <div style="font-size:12px;font-weight:700;color:#8B1A1A;display:flex;align-items:center;gap:6px;
+            border:1px solid #cc0000;border-radius:3px;padding:3px 10px;width:fit-content;">
+      DATE :
+      <span style="min-width:150px;display:inline-block;font-size:13px;font-weight:900;color:#222;text-align:center;">
+        <?php echo date('d / m / Y'); ?>
+      </span>
+    </div>
+  </div>
+
+  <!-- CUSTOMER INFO + RATE BOX -->
+  <div style="display:flex;flex-wrap:wrap;align-items:flex-start;padding:8px;gap:10px;background:#fff;">
+
+    <!-- LEFT: Customer Fields Box -->
+<div style="flex:1;border:2px solid #e8601a;border-radius:8px;margin-right:6px;padding:36px 16px;display:flex;flex-direction:column;gap:12px;">
+
+  <!-- Name -->
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span style="width:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+      <svg width="18" height="20" viewBox="0 0 18 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="9" cy="6" r="4" stroke="#070707" stroke-width="1.8"/>
+        <path d="M1 19c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#040404" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </span>
+    <span style="font-weight:700;font-size:13px;color:blue;min-width:108px;flex-shrink:0;">Name</span>
+    <span style="font-weight:700;font-size:13px;color:#8B1A1A;margin-right:6px;flex-shrink:0;">:</span>
+    <span style="flex:1;border:none;border-bottom:1.5px dotted #999;display:block;min-height:18px;font-size:12px;color:#222;padding-bottom:1px;"><?php echo htmlspecialchars($last_customer_name); ?></span>
+  </div>
+  <!-- Address -->
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span style="width:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+      <svg width="18" height="20" viewBox="0 0 18 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9 1C6.24 1 4 3.24 4 6C4 9.5 9 17 9 17S14 9.5 14 6C14 3.24 11.76 1 9 1ZM9 8C8.45 8 8 7.55 8 7C8 6.45 8.45 6 9 6C9.55 6 10 6.45 10 7C10 7.55 9.55 8 9 8Z" stroke="#000000" stroke-width="1.2" fill="none"/>
+      </svg>
+    </span>
+    <span style="font-weight:700;font-size:13px;color:blue;min-width:108px;flex-shrink:0;">Address</span>
+    <span style="font-weight:700;font-size:13px;color:#8B1A1A;margin-right:6px;flex-shrink:0;">:</span>
+    <span style="flex:1;border:none;border-bottom:1.5px dotted #999;display:block;min-height:18px;font-size:12px;color:#222;padding-bottom:1px;"><?php echo htmlspecialchars($last_customer_address ?? ''); ?></span>
+  </div>
+  <!-- Mobile -->
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span style="width:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+      <svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3.2 1C2 1 1 2 1 3.2c0 1.1.4 2.1.9 3C3.3 8.8 5.5 11 8.3 12.4c.9.5 1.9.9 3 .9 1.2 0 2.2-1 2.2-2.2v-.7c0-.5-.3-1-.8-1.2l-1.8-.6c-.5-.2-1 0-1.3.4l-.6.8c-1.3-.7-2.5-1.9-3.2-3.2l.8-.6C6.9 5.6 7 5 6.9 4.6L6.3 2.8C6.1 2.3 5.6 2 5.1 2L3.2 1z" stroke="#000000" stroke-width="1.6" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <span style="font-weight:700;font-size:13px;color:blue;min-width:108px;flex-shrink:0;">Mobile</span>
+    <span style="font-weight:700;font-size:13px;color:#8B1A1A;margin-right:6px;flex-shrink:0;">:</span>
+    <span style="flex:1;border:none;border-bottom:1.5px dotted #999;display:block;min-height:18px;font-size:12px;color:#222;padding-bottom:1px;"><?php echo htmlspecialchars($last_customer_mobile); ?></span>
+  </div>
+
+  <!-- Customer GST No. -->
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span style="width:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+      <svg width="18" height="17" viewBox="0 0 18 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="1" y="1" width="16" height="15" rx="2" stroke="#000000" stroke-width="1.6"/>
+        <path d="M1 5.5h16" stroke="#030303" stroke-width="1.3" stroke-linecap="round"/>
+        <path d="M5 1v4.5M9 1v4.5" stroke="#040404" stroke-width="1.3" stroke-linecap="round"/>
+        <circle cx="4.5" cy="9.5" r="0.9" fill="#000000"/>
+        <circle cx="9" cy="9.5" r="0.9" fill="#131212"/>
+        <circle cx="13.5" cy="9.5" r="0.9" fill="#000000"/>
+        <circle cx="4.5" cy="13" r="0.9" fill="#000000"/>
+        <circle cx="9" cy="13" r="0.9" fill="#030303"/>
+      </svg>
+    </span>
+    <span style="font-weight:700;font-size:13px;color:blue;min-width:128px;flex-shrink:0;">Customer GST No.</span>
+    <span style="font-weight:700;font-size:13px;color:#8B1A1A;margin-right:6px;flex-shrink:0;">:</span>
+    <span style="flex:1;border:none;border-bottom:1.5px dotted #999;display:block;min-height:18px;font-size:12px;color:#222;padding-bottom:1px;"><?php echo htmlspecialchars($last_customer_gstin ?? ''); ?></span>
+  </div>
+
+
+
+</div><!-- /left customer box -->
+
+    <!-- RIGHT: Rate Box -->
+    <div style="flex:1 1 220px;min-width:220px;max-width:100%;border:2px solid #e8601a;border-radius:8px;overflow:hidden;background:#fff;">
+      <?php
+      $rateItems = [
+          ['label'=>'24K Rate',    'id'=>'rate24kVal',    'key'=>'gold24'],
+          ['label'=>'22K Rate',    'id'=>'rate22kVal',    'key'=>'gold22'],
+          ['label'=>'18K Rate',    'id'=>'rate18kVal',    'key'=>'gold18'],
+          ['label'=>'Silver Rate', 'id'=>'rateSilverVal', 'key'=>'silver'],
+      ];
+      $totalRates = count($rateItems);
+      foreach($rateItems as $ri => $rItem):
+      ?>
+      <div style="display:flex;align-items:center;padding:11px 14px;<?php echo ($ri < $totalRates-1) ? 'border-bottom:1px solid #f5a06a;' : ''; ?>">
+        <span style="font-weight:700;font-size:13px;color:#8B1A1A;min-width:82px;flex-shrink:0;"><?php echo $rItem['label']; ?></span>
+        <span style="font-weight:700;font-size:13px;color:#8B1A1A;margin:0 8px;flex-shrink:0;">:</span>
+        <span id="<?php echo $rItem['id']; ?>" data-rate-key="<?php echo $rItem['key']; ?>"
+              style="flex:1;border-bottom:2px solid #8B1A1A;display:block;height:16px;font-size:12px;font-weight:700;color:#222;text-align:right;padding-right:2px;"></span>
+      </div>
+      <?php endforeach; ?>
+    </div><!-- /rate box -->
+
+  </div><!-- /customer + rates -->
+
+<!-- ITEMS TABLE -->
+<div style="border:1.5px solid #cc4400;border-radius:10px;padding:0px 0px;overflow:hidden;margin:0 7px;">
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead>
+      <tr>
+        <th style="background:#8B1A1A;color:#fff;padding:9px 10px;text-align:center;font-weight:700;
+                   width:22%;border-right:1px solid rgba(255,255,255,0.3);">DESCRIPTION</th>
+        <th style="background:#79641B;color:#fff;padding:9px 6px;text-align:center;font-size:11px;
+                   font-weight:700;width:10%;border-right:1px solid rgba(255,255,255,0.3);">HSN<br>CODE</th>
+        <th style="background:#556B2F;color:#fff;padding:9px 6px;text-align:center;font-size:11px;
+                   font-weight:700;width:10%;border-right:1px solid rgba(255,255,255,0.3);">WEIGHT<br>(gm.)</th>
+        <th style="background:#CD5705;color:#fff;padding:9px 6px;text-align:center;font-size:11px;
+                   font-weight:700;width:12%;border-right:1px solid rgba(255,255,255,0.3);">PROCESSING<br>CHARGE</th>
+        <th style="background:#CD5705;color:#fff;padding:9px 6px;text-align:center;font-size:11px;
+                   font-weight:700;width:10%;border-right:1px solid rgba(255,255,255,0.3);">OTHERS<br>CHARGE</th>
+        <th style="background:#2F5A1A;color:#fff;padding:9px 6px;text-align:center;font-size:11px;
+                   font-weight:700;width:36%;">AMOUNT<br>(&#8377;)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php
+      $rowCount = 0;
+      foreach($last_items as $item):
+        $qty    = floatval($item['quantity'] ?? 0);
+        $itotal = floatval($item['total'] ?? 0);
+        $iname  = htmlspecialchars($item['name'] ?? '');
+        $ihsn   = htmlspecialchars($item['hsn'] ?? '71131910');
+        $rowCount++;
+      ?>
+      <tr style="border-bottom:1px solid #f0c0a0;">
+        <td style="padding:8px 10px;vertical-align:top;"><?php echo $iname; ?></td>
+        <td style="padding:8px 6px;text-align:center;vertical-align:top;"><?php echo $ihsn; ?></td>
+        <td style="padding:8px 6px;text-align:center;vertical-align:top;"><?php echo $qty > 0 ? number_format($qty,3) : ''; ?></td>
+        <td style="padding:8px 6px;text-align:center;vertical-align:top;"><?php echo ($rowCount === 1 && $processing_charge > 0) ? number_format($processing_charge,2) : ''; ?></td>
+        <td style="padding:8px 6px;text-align:center;vertical-align:top;">&nbsp;</td>
+        <td style="padding:8px 10px;text-align:right;vertical-align:top;font-weight:600;white-space:nowrap;"><?php echo number_format($itotal,2); ?></td>
+      </tr>
+      <?php endforeach; ?>
+      <?php for($b=0; $b < max(0, 17-$rowCount); $b++): ?>
+<tr style="border-bottom:1px solid #f0c0a0;height:56px;">
+        <td>&nbsp;</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <?php endfor; ?>
+    </tbody>
+    <tfoot>
+      <tr style="background:#fff8f0;">
+        <td style="padding:7px 10px;">&nbsp;</td>
+        <td></td>
+        <td style="text-align:center;font-weight:700;color:#cc4400;"><?php echo number_format($last_total_quantity,3); ?></td>
+        <td style="text-align:center;font-weight:700;color:#cc4400;"><?php echo $processing_charge > 0 ? number_format($processing_charge,2) : ''; ?></td>
+        <td style="text-align:center;font-weight:700;color:#cc4400;"><?php echo $others_charge_val != 0 ? number_format($others_charge_val,2) : ''; ?></td>
+        <td style="text-align:right;font-weight:900;color:#cc4400;padding:7px 10px;font-size:13px;white-space:nowrap;"><?php echo number_format($last_total,2); ?></td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+  <!-- BOTTOM SECTION -->
+  <div style="display:flex;flex-wrap:wrap;min-height:170px;">
+
+    <!-- BOTTOM LEFT -->
+<div style="flex:1 1 320px;min-width:320px;max-width:100%;border:1px solid #1a3a7a;border-radius:8px;display:flex;flex-direction:column;padding:0px 8px;overflow:hidden;margin:5px 8px;min-height:90px;">
+
+  <div style="padding:5px 10px 0;">
+    <div style="background:#1a3a7a;display:inline-block;padding:2px 8px;border-radius:3px;margin-bottom:3px;">
+      <span style="color:#fff;font-weight:700;font-size:10px;letter-spacing:.05em;">PAYMENT</span>
+    </div>
+  </div>
+
+  <div style="padding:6px 10px;">
+    <div style="display:flex;align-items:center;margin-bottom:4px;">
+      <span style="font-weight:700;font-size:10px;color:#222;min-width:80px;">Type</span>
+      <span style="color:#222;margin:0 2px;font-size:10px;">:</span>
+      <span style="flex:1;border-bottom:1px dotted #aaa;padding-bottom:1px;font-size:10px;font-weight:600;"><?php echo htmlspecialchars($last_payment_method ?: 'Cash'); ?></span>
+    </div>
+    <div style="display:flex;align-items:center;margin-bottom:4px;">
+      <span style="font-weight:700;font-size:10px;color:#222;min-width:80px;\">Date</span>
+      <span style="color:#222;margin:0 2px;font-size:10px;">:</span>
+      <span style="flex:1;border-bottom:1px dotted #aaa;padding-bottom:1px;font-size:10px;"><?php echo date('d-m-Y'); ?></span>
+    </div>
+    <div style="display:flex;align-items:center;">
+      <span style="font-weight:700;font-size:10px;color:#222;min-width:80px;\">Amount</span>
+      <span style="color:#222;margin:0 2px;font-size:10px;">:</span>
+      <span style="flex:1;border-bottom:1px dotted #aaa;padding-bottom:1px;font-size:11px;font-weight:700;color:#cc4400;">₹<?php echo number_format($last_paid_amount,2); ?></span>
+    </div>
+  </div>
+
+  <div style="padding:8px 10px 25px;flex:1;">
+    <div style="background:#1a3a7a;display:inline-block;padding:2px 8px;border-radius:3px;margin-bottom:3px;">
+      <span style="color:#fff;font-size:8px;font-weight:700;\">TERMS & CONDITIONS</span>
+    </div>
+    <ol style="margin:0;padding-left:14px;font-size:8px;color:#333;line-height:1.3;\">
+      <li>E. &amp; O.E.</li>
+      <li>Payment within due date.</li>
+      <li>Include invoice in payment note.</li>
+      <li>Disputes: Paschim Medinipur jurisdiction.</li>
+    </ol>
+  </div>
+
+  <div style="padding:2px 10px 0;">
+    <div style="background:#1a3a7a;display:inline-block;padding:2px 8px;border-radius:3px;margin-bottom:3px;">
+      <span style="color:#fff;font-size:8px;font-weight:700;">PAYMENT MODES</span>
+    </div>
+  </div>
+
+  <!-- 4 Payment Mode Boxes -->
+  <div style="display:flex;padding:0 8px 8px;gap:3px;">
+    <div style="flex:1;border:1.5px solid #e8a050;border-radius:5px;padding:5px 2px;text-align:center;background:#fffbf0;">
+      <div style="width:24px;height:24px;border:2px solid #e8a050;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 2px;background:#fff;font-size:12px;">&#128181;</div>
+      <div style="font-size:8px;font-weight:700;color:#222;">Cash</div>
+      <div style="font-size:9px;font-weight:600;color:#1a3a7a;">₹<?php echo number_format($last_cash_paid,2); ?></div>
+    </div>
+    <div style="flex:1;border:1.5px solid #e8a050;border-radius:5px;padding:5px 2px;text-align:center;background:#fffbf0;">
+      <div style="width:24px;height:24px;border:2px solid #e8a050;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 2px;background:#fff;font-size:12px;">&#128196;</div>
+      <div style="font-size:8px;font-weight:700;color:#222;">Cheque</div>
+      <div style="font-size:9px;font-weight:600;color:#1a3a7a;">₹<?php echo number_format($last_cheque_paid,2); ?></div>
+    </div>
+    <div style="flex:1;border:1.5px solid #e8a050;border-radius:5px;padding:5px 2px;text-align:center;background:#fffbf0;">
+      <div style="width:24px;height:24px;border:2px solid #e8a050;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 2px;background:#fff;font-size:12px;">&#128179;</div>
+      <div style="font-size:8px;font-weight:700;color:#222;">UPI / NEFT</div>
+      <div style="font-size:9px;font-weight:600;color:#1a3a7a;">₹<?php echo number_format($upi_card,2); ?></div>
+    </div>
+    <div style="flex:1;border:1.5px solid #e8a050;border-radius:5px;padding:5px 2px;text-align:center;background:#fffbf0;">
+      <div style="width:24px;height:24px;border:2px solid #e8a050;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 2px;background:#fff;font-size:12px;">&#128142;</div>
+      <div style="font-size:7px;font-weight:700;color:#222;line-height:1;">Old<br>Gold</div>
+      <div style="font-size:9px;font-weight:600;color:#1a3a7a;">₹<?php echo number_format($last_old_gold_value,2); ?></div>
+    </div>
+  </div>
+
+  <!-- BANK DETAILS SECTION -->
+  <div style="border:1px solid #1a3a7a;border-radius:5px;margin:4px 2px;overflow:hidden;">
+    <div style="background:#1a3a7a;padding:3px 6px;">
+      <span style="color:#fff;font-weight:700;font-size:7px;letter-spacing:.05em;">BANK</span>
+    </div>
+    <div style="padding:4px 6px;font-size:7px;color:#222;line-height:1.2;">
+      <div><span style="font-weight:700;">Bank Name:</span> SBI</div>
+      <div><span style="font-weight:700;">Branch:</span> Pingla</div>
+      <div><span style="font-weight:700;">Current A/C No:</span> 44138024224</div>
+      <div><span style="font-weight:700;">IFSC CODE:</span> SBIN0014095</div>
+    </div>
+  </div>
+
+</div><!-- /bottom left -->
+
+    <!-- BOTTOM RIGHT -->
+    <div style="flex:1 1 320px;min-width:320px;display:flex;flex-direction:column;">
+
+      <!-- AMOUNT CALCULATION SECTION -->
+      <div style="border:1px solid #cc0000;border-radius:5px;margin:4px 5px;overflow:hidden;">
+        <div style="background:#8B1A1A;padding:4px 8px;">
+          <span style="color:#fff;font-weight:700;font-size:9px;letter-spacing:.05em;">AMOUNT CALCULATION</span>
+        </div>
+
+        <?php
+        $calcRows = [
+          ['label'=>'Net Amount',        'val'=>$net_amount],
+          ['label'=>'Discount',          'val'=>$last_discount],
+          ['label'=>'CGST',              'val'=>$last_cgst_amount],
+          ['label'=>'SGST',              'val'=>$last_sgst_amount],
+          ['label'=>'Round Off',         'val'=>$last_round_off],
+        ];
+        foreach($calcRows as $cr): ?>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid #f0d0c0;font-size:8px;">
+          <span style="color:#222;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;"><?php echo $cr['label']; ?></span>
+          <span style="color:#222;min-width:45px;text-align:right;">₹<?php echo number_format($cr['val'],2); ?></span>
+        </div>
+        <?php endforeach; ?>
+      </div>
+
+      <!-- GROSS AMOUNT SECTION -->
+      <div style="border:1px solid #cc0000;border-radius:5px;margin:4px 5px;overflow:hidden;">
+        <div style="background:#2F5A1A;padding:4px 8px;">
+          <span style="color:#fff;font-weight:700;font-size:9px;letter-spacing:.05em;">GROSS AMOUNT</span>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid #f0d0c0;font-size:8px;">
+          <span style="color:#cc4400;font-weight:700;">Gross Amount</span>
+          <span style="color:#cc4400;font-weight:700;min-width:45px;text-align:right;">₹<?php echo number_format($gross_amount,2); ?></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid #f0d0c0;font-size:8px;">
+          <span style="color:#222;">Amount</span>
+          <span style="color:#222;min-width:45px;text-align:right;">₹<?php echo number_format($last_paid_amount,2); ?></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;font-size:8px;">
+          <span style="color:#222;">Amount Paid In Full</span>
+          <span style="color:#222;min-width:45px;text-align:right;">₹<?php echo number_format($last_balance_amount,2); ?></span>
+        </div>
+      </div>
+
+      <!-- RUPEES IN WORDS SECTION -->
+      <div style="border:1px solid #cc0000;border-radius:5px;margin:4px 5px;padding:5px 8px;overflow:hidden;font-size:7px;">
+        <div style="color:#1a3a7a;font-weight:700;margin-bottom:2px;">Rupees (in words):</div>
+        <div style="color:#333;border-bottom:1px dotted #aaa;padding-bottom:2px;min-height:12px;line-height:1.2;"><?php echo convertNumberToWords($last_total); ?></div>
+        <div style="border-bottom:1px dotted #aaa;height:8px;margin-top:3px;"></div>
+      </div>
+
+      <!-- SIGNATURE SECTION -->
+      <div style="border:2px solid #000;border-radius:5px;margin:4px 5px;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:10px;">
+        <div style="width:100%;margin-bottom:5px;min-height:40px;">&nbsp;</div>
+        <span style="font-size:8px;color:#222;font-weight:700;">Authorized Signature</span>
+      </div>
+
+    </div><!-- /bottom right -->
+
+  </div><!-- /bottom section -->
+
+  <!-- FOOTER -->
+  <div style="background:linear-gradient(180deg,#5b9bd5 0%,#1a5fa8 100%);
+              padding:14px 30px;display:flex;justify-content:space-between;
+              align-items:center;border-top:3px solid #e8a050;">
+    <span style="font-size:12px;color:#fff;font-weight:500;">Customer's Signature</span>
+    <!-- <span style="font-size:12px;color:#fff;font-weight:500;">Authorised Signature</span> -->
+  </div>
+
+</div><!-- /#mgInvoicePrint -->
+
+<!-- Print Button -->
+<div style="text-align:center;margin:20px 0;" class="no-print">
+  <button onclick="printInvoiceSinglePage()"
+    style="background:linear-gradient(135deg,#800020,#d68b16);color:#fff;border:none;
+           padding:12px 40px;border-radius:8px;cursor:pointer;font-weight:bold;
+           font-size:15px;letter-spacing:1px;">
+    &#128424;&#65039; Print Invoice
+  </button>
+</div>
+
 <?php endif; ?>
 
 <!-- JAVASCRIPT -->
@@ -1644,12 +2192,11 @@ if(!empty($last_invoice_no)) {
 const ALL_PRODUCTS = <?php echo json_encode($all_products, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 const itemTypeOptions = <?php echo json_encode($itemTypeOptions, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 const defaultItemTypeOptions = {
-    'Gold 22K': ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Other'],
-    'Gold 18K': ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Baby Ring','Bali','Pitaring','Other'],
-    'Silver':   ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Tops','Ladies Ring','Gents Ring','Breslet','Tika','Loket','Mankha','Payal','Bichiya','Nosering','Baby Ring','Pat (Gross)','S- (Gross)','Nosepin (Gross)','Sankha','Pola','Other'],
-    'Stone':    ['Natural Pearl','Gomed','Red Coral','Nila','Panna','Jerkon','Amethist','Cats Eye','Other'],
-    'Diamond':  ['Ladies Ring','Gents Ring','Tops','Mangal Sutra','Nose pin','Necklace','Other'],
-    'Others':   ['Shankha','Pala','Mala','Moti Mala','Trasel','Branch Fram','Braslate Pala','parl Mala','Gala','Reparing','Stamp Charg','Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Other']
+    'Gold 22K': ['Chur','Bala','Churi','Single Loket','Double Loket','Pearl Choker','JhulaDul','Bauti chur','Soket Bauti','Necklace','Gold Choker','Chain','Jhumka','Tops','Ladies Ring','Gents Ring','Gents Breslet','Ladies Breslet','Pearl sitahar','Tika','Takti','Mantasa','Nosepin','Baby Ring','Baby Breslet','Bali','Pitaring','Breslet Noya','Stell Noya'],
+    'Gold 18K': ['Chur','Bala','Churi','Single Loket','Double Loket','Pearl Choker','JhulaDul','Bauti chur','Soket Bauti','Necklace','Gold Choker','Chain','Jhumka','Tops','Ladies Ring','Gents Ring','Gents Breslet','Ladies Breslet','Pearl sitahar','Tika','Takti','Mantasa','Nosepin','Baby Ring','Baby Breslet','Bali','Pitaring','Breslet Noya','Stell Noya'],
+    'Silver':   ['Thali','Bati','Glass','Spoon','Showpiece','B.B.C Silver','Mix Silver'],
+    'Stone':    ['Natural Pearl','Gomed','Red Coral','Nila','Panna','Jerkon','Amethist','Cats Eye'],
+    'Diamond':  ['Ladies Ring','Gents Ring','Tops','Mangal Sutra','Nose pin','Necklace'],
 };
 const mergedItemTypeOptions = {};
 Object.keys(defaultItemTypeOptions).forEach(category => {
@@ -1779,7 +2326,7 @@ function addStockItem() {
         product_id: productId,
         name: name,
         item_type: '',
-        hsn: '7108',
+        hsn: '7113',
         quantity: qty,
         price: finalRate,
         total: parseFloat((finalRate * qty).toFixed(2)),
@@ -1842,7 +2389,7 @@ function addCategoryItem() {
         product_id: 'other',
         name: cat + ' \u2013 ' + type,
         item_type: type,
-        hsn: '7108',
+        hsn: '7113',
         quantity: qty,
         price: rate,
         total: parseFloat((rate * qty).toFixed(2)),
@@ -1870,7 +2417,7 @@ function addManualItem() {
     const gms   = parseFloat(document.getElementById('manualGms').value)   || 0;
     const rate  = parseFloat(document.getElementById('manualRate').value)  || 0;
     const total = parseFloat(document.getElementById('manualTotal').value) || 0;
-    const hsn   = document.getElementById('manualHsn').value.trim() || '7108';
+    const hsn   = document.getElementById('manualHsn').value.trim() || '71131910';
     if(!name)    { alert('Please enter an item description.'); return; }
     if(total <= 0) { alert('Please enter a valid total amount (\u20B9).'); return; }
     items.push({
@@ -1890,7 +2437,7 @@ function addManualItem() {
     document.getElementById('manualGms').value   = '0';
     document.getElementById('manualRate').value  = '0';
     document.getElementById('manualTotal').value = '';
-    document.getElementById('manualHsn').value   = '7108';
+    document.getElementById('manualHsn').value   = '71131910';
     showNotif('\u2705 Added: ' + name, 'success');
 }
 
@@ -1910,7 +2457,7 @@ function updateItemsList() {
             '<td class="px-2 py-2 text-xs text-center" style="color:#9ca3af;">' + (idx+1) + '</td>' +
             '<td class="px-2 py-2 text-xs" style="color:#374151;">' + icon + ' ' + htmlEsc(item.name) +
                 (item.item_type ? '<span style="color:#b5730e;font-size:10px;"> [' + htmlEsc(item.item_type) + ']</span>' : '') +
-                badge + '<div style="color:#9ca3af;font-size:10px;">HSN: ' + (item.hsn || '7108') + '</div></td>' +
+                badge + '<div style="color:#9ca3af;font-size:10px;">HSN: ' + (item.hsn || '71131910') + '</div></td>' +
             '<td class="px-2 py-2 text-center text-xs" style="color:#6b7280;">' + (item.quantity > 0 ? item.quantity : '\u2014') + '</td>' +
             '<td class="px-2 py-2 text-right text-xs" style="color:#374151;">' + (item.price > 0 ? '\u20B9' + item.price.toFixed(2) : '\u2014') + '</td>' +
             '<td class="px-2 py-2 text-right text-xs font-semibold" style="color:#7a4e0a;">\u20B9' + item.total.toFixed(2) + '</td>' +
@@ -1979,13 +2526,33 @@ function toggleManualInvoice() {
     document.getElementById('autoInvoiceInfo').style.display  = checked ? 'none'  : 'block';
 }
 
+function toggleMemoBill() {
+    const memoChecked  = document.getElementById('memoBillToggle').checked;
+    const manualToggle = document.getElementById('manualInvoiceToggle');
+    const manualDiv     = document.getElementById('manualInvoiceDiv');
+    const autoInfo       = document.getElementById('autoInvoiceInfo');
+    const memoInfo        = document.getElementById('memoInvoiceInfo');
+
+    if (memoChecked) {
+        manualToggle.checked = false;
+        manualToggle.disabled = true;
+        manualDiv.style.display = 'none';
+        autoInfo.style.display = 'none';
+        memoInfo.style.display = 'block';
+    } else {
+        manualToggle.disabled = false;
+        memoInfo.style.display = 'none';
+        toggleManualInvoice();
+    }
+}
+
 // Shop Rates
-const shopRates = { gold22:0, gold18:0, silver:0, diamond:0 };
-const shopDisplayIds = { gold22:'shopGold22Display', gold18:'shopGold18Display', silver:'shopSilverDisplay', diamond:'shopDiamondDisplay' };
-const shopInputIds   = { gold22:'shopGold22Input',   gold18:'shopGold18Input',   silver:'shopSilverInput',   diamond:'shopDiamondInput'   };
+const shopRates = { gold24:0, gold22:0, gold18:0, silver:0, diamond:0 };
+const shopDisplayIds = { gold24:'shopGold24Display', gold22:'shopGold22Display', gold18:'shopGold18Display', silver:'shopSilverDisplay', diamond:'shopDiamondDisplay' };
+const shopInputIds   = { gold24:'shopGold24Input',   gold22:'shopGold22Input',   gold18:'shopGold18Input',   silver:'shopSilverInput',   diamond:'shopDiamondInput'   };
 
 function loadShopRates() {
-    ['gold22','gold18','silver','diamond'].forEach(k => {
+    ['gold24','gold22','gold18','silver','diamond'].forEach(k => {
         const val = localStorage.getItem('shopRate_' + k);
         if(val && parseFloat(val) > 0) {
             shopRates[k] = parseFloat(val);
@@ -1999,6 +2566,7 @@ function loadShopRates() {
         document.getElementById('shopRateLastSaved').textContent  = 'Last saved: ' + saved;
     }
     calcShopValue();
+    fillInvoiceRateBox();
 }
 
 function previewShopRate(key) {
@@ -2018,11 +2586,12 @@ function saveShopRate(key) {
     document.getElementById('shopRateSaveStatus').textContent = '\u2714 Saved';
     document.getElementById('shopRateLastSaved').textContent  = 'Last saved: ' + now;
     calcShopValue();
+    fillInvoiceRateBox();
 }
 
 function saveAllShopRates() {
     let saved = 0;
-    ['gold22','gold18','silver','diamond'].forEach(k => {
+    ['gold24','gold22','gold18','silver','diamond'].forEach(k => {
         const val = parseFloat(document.getElementById(shopInputIds[k]).value) || 0;
         if(val > 0) {
             shopRates[k] = val;
@@ -2037,6 +2606,18 @@ function saveAllShopRates() {
     document.getElementById('shopRateSaveStatus').textContent = '\u2714 All Saved';
     document.getElementById('shopRateLastSaved').textContent  = 'Last saved: ' + now;
     calcShopValue();
+    fillInvoiceRateBox();
+}
+
+function fillInvoiceRateBox() {
+    const stKeys = { gold24:'shopRate_gold24', gold22:'shopRate_gold22', gold18:'shopRate_gold18', silver:'shopRate_silver' };
+    document.querySelectorAll('[data-rate-key]').forEach(span => {
+        const key = span.getAttribute('data-rate-key');
+        const val = parseFloat(localStorage.getItem(stKeys[key])) || 0;
+        if(val > 0) {
+            span.textContent = '\u20B9' + val.toLocaleString('en-IN', {minimumFractionDigits:2});
+        }
+    });
 }
 
 function getShopRateForCategory(category) {
@@ -2277,18 +2858,19 @@ function updateBalanceFromPart() {
     const grand  = parseFloat(document.getElementById('grandTotal').textContent.replace('\u20B9','').replace(/,/g,'')) || 0;
     const partDiv = document.getElementById('partAmountDiv');
     const balDiv  = document.getElementById('balanceDisplay');
+    const extraPaid = (parseFloat(document.getElementById('chequePaidInput')?.value) || 0) + (parseFloat(document.getElementById('oldGoldValueInput')?.value) || 0);
     let balance = 0;
 
     if(method === 'Split') {
         const cash = parseFloat(document.getElementById('cashAmount').value) || 0;
         const upi  = parseFloat(document.getElementById('upiAmount').value)  || 0;
-        const paid = cash + upi;
+        const paid = cash + upi + extraPaid;
         const remaining = Math.max(0, grand - paid);
         balance = remaining;
         if(remaining > 0) {
             partDiv.style.display = 'block';
             balDiv.style.display  = 'block';
-            document.getElementById('paidAmount').value = paid.toFixed(2);
+            document.getElementById('paidAmount').value = (cash + upi).toFixed(2);
             document.getElementById('balanceAmt').textContent = '\u20B9' + remaining.toFixed(2);
             if(status === 'paid' && paid > 0) {
                 document.getElementById('paymentStatus').value = 'part';
@@ -2299,13 +2881,13 @@ function updateBalanceFromPart() {
         }
     } else {
         if(status === 'part') {
-            const paid = parseFloat(document.getElementById('paidAmount').value) || 0;
+            const paid = (parseFloat(document.getElementById('paidAmount').value) || 0) + extraPaid;
             balance = Math.max(0, grand - paid);
             document.getElementById('balanceAmt').textContent = '\u20B9' + balance.toFixed(2);
             partDiv.style.display = 'block';
             balDiv.style.display  = 'block';
         } else if(status === 'unpaid') {
-            balance = grand;
+            balance = Math.max(0, grand - extraPaid);
             document.getElementById('balanceAmt').textContent = '\u20B9' + balance.toFixed(2);
             partDiv.style.display = 'none';
             balDiv.style.display  = 'block';
@@ -2416,54 +2998,6 @@ function sendDueReminder(invoiceNo, customerName, customerMobile, balanceAmount)
     });
 }
 
-// ── NEW: Due Today — Mark as Paid ─────────────────────────────────────────
-function markDueAsPaid(invoiceNo) {
-    if(!confirm('Mark invoice ' + invoiceNo + ' as fully paid?')) return;
-    const btn = document.getElementById('paid-btn-' + invoiceNo);
-    if(!btn) return;
-    btn.disabled = true;
-    btn.textContent = '\u23F3 Updating...';
-
-    const payload = new URLSearchParams();
-    payload.append('invoice_no', invoiceNo);
-
-    fetch(window.location.pathname + '?action=mark_paid', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: payload.toString(),
-        credentials: 'same-origin'
-    })
-    .then(r => r.json())
-    .then(data => {
-        if(data.success) {
-            const card = document.getElementById('duecard-' + invoiceNo);
-            if(card) {
-                card.style.transition = 'opacity 0.3s, height 0.3s, margin 0.3s, padding 0.3s';
-                card.style.opacity = '0';
-                card.style.height = '0';
-                card.style.margin = '0';
-                card.style.padding = '0';
-                setTimeout(() => {
-                    card.remove();
-                    hideDueTodaySectionIfEmpty();
-                }, 300);
-            } else {
-                hideDueTodaySectionIfEmpty();
-            }
-            showNotif('\u2705 ' + data.message, 'success');
-        } else {
-            btn.disabled = false;
-            btn.textContent = '\u2713 Mark as Paid';
-            showNotif(data.message || 'Update failed.', 'error');
-        }
-    })
-    .catch(() => {
-        btn.disabled = false;
-        btn.textContent = '\u2713 Mark as Paid';
-        showNotif('Network error. Please try again.', 'error');
-    });
-}
-
 function hideDueTodaySectionIfEmpty() {
     const section = document.querySelector('.due-today-section');
     if(!section) return;
@@ -2493,7 +3027,41 @@ function showNotif(msg, type) {
     document.body.appendChild(d);
     setTimeout(() => { d.style.opacity='0'; d.style.transition='opacity 0.3s'; setTimeout(()=>d.remove(),300); }, 3500);
 }
+function fitInvoiceToOnePage() {
+    const el = document.getElementById('mgInvoicePrint');
+    if (!el) return;
 
+    // reset first so we measure natural size
+    el.style.transform = 'none';
+
+    const pxPerMM = 96 / 25.4;
+    const pageW = (210 - 16) * pxPerMM; // A4 width minus 8mm+8mm margin
+    const pageH = (297 - 16) * pxPerMM; // A4 height minus 8mm+8mm margin
+
+    const rect = el.getBoundingClientRect();
+
+    const scaleX = pageW / rect.width;
+    const scaleY = pageH / rect.height;
+
+    el.style.transformOrigin = 'top left';
+    el.style.transform = `scale(${scaleX}, ${scaleY})`;
+    el.style.width = rect.width + 'px';   // lock width so scale math stays correct
+}
+
+function resetInvoiceScale() {
+    const el = document.getElementById('mgInvoicePrint');
+    if (!el) return;
+    el.style.transform = 'none';
+    el.style.width = '';
+}
+
+function printInvoiceSinglePage() {
+    fitInvoiceToOnePage();
+    window.print();
+}
+
+window.addEventListener('beforeprint', fitInvoiceToOnePage);
+window.addEventListener('afterprint', resetInvoiceScale);
 // Mobile search
 function searchBillsByMobile() {
     const mobile = document.getElementById('searchMobile').value.trim();
@@ -2555,6 +3123,56 @@ document.getElementById('billingForm').addEventListener('submit', function(e) {
     }
     document.getElementById('hiddenItems').value = JSON.stringify(items);
 });
+
+function fitInvoiceToOnePage() {
+    const el = document.getElementById('mgInvoicePrint');
+    if (!el) return;
+
+    // reset first so we measure natural (unzoomed) size
+    el.style.zoom = 1;
+
+    const pxPerMM = 96 / 25.4;
+    // Use the smaller of A4 / Letter dimensions so it fits either paper size
+    const pageH = (279.4 - 16) * pxPerMM; // Letter height (shorter than A4) minus 8mm+8mm margin
+    const pageW = (210   - 16) * pxPerMM; // A4 width (narrower than Letter) minus 8mm+8mm margin
+
+    const rect = el.getBoundingClientRect();
+    const scale = Math.min(1, pageH / rect.height, pageW / rect.width);
+
+    if (scale < 1) {
+        el.style.zoom = scale;
+    }
+}
+
+function resetInvoiceScale() {
+    const el = document.getElementById('mgInvoicePrint');
+    if (!el) return;
+    el.style.zoom = 1;
+}
+
+function printInvoiceSinglePage() {
+    fitInvoiceToOnePage();
+    window.print();
+}
+
+window.addEventListener('beforeprint', fitInvoiceToOnePage);
+window.addEventListener('afterprint', resetInvoiceScale);
+
+function resetInvoiceScale() {
+    const el = document.getElementById('mgInvoicePrint');
+    if (!el) return;
+    el.style.transform = '';
+    el.style.width = '';
+}
+
+function printInvoiceSinglePage() {
+    fitInvoiceToOnePage();
+    window.print();
+}
+
+// Safety net in case the browser fires the native print dialog another way
+window.addEventListener('beforeprint', fitInvoiceToOnePage);
+window.addEventListener('afterprint', resetInvoiceScale);
 
 // Init
 loadShopRates();

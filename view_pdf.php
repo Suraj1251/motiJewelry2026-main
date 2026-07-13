@@ -17,6 +17,44 @@ if(!$inv_res || mysqli_num_rows($inv_res) == 0) {
 }
 $inv = mysqli_fetch_assoc($inv_res);
 
+$customer_name = trim($inv['customer_name'] ?? '');
+$customer_mobile = trim($inv['customer_mobile'] ?? '');
+$customer_address = trim($inv['customer_address'] ?? '');
+$customer_gstin = trim($inv['customer_gstin'] ?? '');
+
+$customer_lookup = null;
+
+if(!empty($inv['customer_id'])) {
+    $cust_res = mysqli_query($conn, "SELECT name, mobile, email, address, gst_number FROM customers WHERE id = " . intval($inv['customer_id']));
+    if($cust_res && mysqli_num_rows($cust_res) > 0) {
+        $customer_lookup = mysqli_fetch_assoc($cust_res);
+    }
+}
+
+if(!$customer_lookup && !empty($customer_mobile)) {
+    $cust_res = mysqli_query($conn, "SELECT name, mobile, email, address, gst_number FROM customers WHERE mobile = '" . mysqli_real_escape_string($conn, $customer_mobile) . "' LIMIT 1");
+    if($cust_res && mysqli_num_rows($cust_res) > 0) {
+        $customer_lookup = mysqli_fetch_assoc($cust_res);
+    }
+}
+
+if(!$customer_lookup && !empty($customer_name)) {
+    $cust_res = mysqli_query($conn, "SELECT name, mobile, email, address, gst_number FROM customers WHERE name = '" . mysqli_real_escape_string($conn, $customer_name) . "' LIMIT 1");
+    if($cust_res && mysqli_num_rows($cust_res) > 0) {
+        $customer_lookup = mysqli_fetch_assoc($cust_res);
+    }
+}
+
+if($customer_lookup) {
+    $customer_name = trim($customer_lookup['name'] ?? $customer_name);
+    $customer_mobile = trim($customer_lookup['mobile'] ?? $customer_mobile);
+    $customer_address = trim($customer_lookup['address'] ?? $customer_address);
+    $customer_gstin = trim($customer_lookup['gst_number'] ?? $customer_gstin);
+}
+
+if($customer_name === '') $customer_name = 'Customer';
+if($customer_mobile === '') $customer_mobile = '—';
+
 // Fetch invoice items — build SELECT based on available product columns to avoid SQL errors
 $has_serial   = mysqli_num_rows(mysqli_query($conn, "SHOW COLUMNS FROM products LIKE 'serial_no'")) > 0;
 $has_hsn      = mysqli_num_rows(mysqli_query($conn, "SHOW COLUMNS FROM products LIKE 'hsn'")) > 0;
@@ -53,7 +91,7 @@ $total    = floatval($inv['total_amount']);
 $paid     = floatval($inv['paid_amount'] ?? 0);
 $balance  = floatval($inv['balance_amount'] ?? 0);
 $date_fmt = date('d M Y', strtotime($inv['created_at']));
-$gstin    = trim($inv['customer_gstin'] ?? '');  // ★ GSTIN
+$gstin    = $customer_gstin;
 
 // Number to words
 function num2words($n) {
@@ -180,14 +218,14 @@ table.items tfoot td.r{text-align:right;font-weight:700;}
     <div class="cust-row">
         <div class="cust-box">
             <div class="cust-label">Bill To</div>
-            <div class="cust-name"><?php echo htmlspecialchars($inv['customer_name']); ?></div>
+            <div class="cust-name"><?php echo htmlspecialchars($customer_name); ?></div>
             <!-- ★ GSTIN shown under customer name -->
             <?php if($gstin !== ''): ?>
                 <div><span class="gstin-badge">🧾 GSTIN: <?php echo htmlspecialchars($gstin); ?></span></div>
             <?php endif; ?>
             <div class="cust-det">
-                📱 <?php echo htmlspecialchars($inv['customer_mobile'] ?? '—'); ?><br>
-                <?php if(!empty($inv['customer_address'])): ?>📍 <?php echo nl2br(htmlspecialchars($inv['customer_address'])); ?><?php endif; ?>
+                📱 <?php echo htmlspecialchars($customer_mobile); ?><br>
+                <?php if(!empty($customer_address)): ?>📍 <?php echo nl2br(htmlspecialchars($customer_address)); ?><?php endif; ?>
             </div>
         </div>
         <div class="cust-box">

@@ -93,7 +93,9 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Live Stock - Maa Gouri Jewellers</title>
+    <meta name="author" content="MANU GUPTA">
+    <meta name="description" content="Live Stock Management for Gouri Jewellers">
+    <title>Live Stock - gouri JEWELLERS</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="assets/css/theme.css">
@@ -572,7 +574,7 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
         }
     }
 
-    const texts = ["MAA GOURI JEWELLERS"];
+    const texts = ["MOTI JEWELLERS"];
     let textIndex = 0, charIndex = 0, isDeleting = false, typingSpeed = 100;
 
     function typeEffect() {
@@ -616,13 +618,37 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
 <!-- Loading Overlay -->
 <div id="loadingOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;justify-content:center;align-items:center;overflow:hidden;transition:opacity 0.6s ease,visibility 0.6s ease;background:radial-gradient(ellipse at 50% 60%, #1a0a00 0%, #0d0500 100%);">
     <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(214,139,22,0.015) 3px,rgba(214,139,22,0.015) 4px);pointer-events:none;z-index:1;"></div>
-    <!-- background diamonds removed to keep only central gem -->
+    <!-- <div style="position:absolute;top:28px;left:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite;">✦</div>
+    <div style="position:absolute;top:28px;right:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 1s;">✦</div>
+    <div style="position:absolute;bottom:28px;left:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 2s;">✦</div>
+    <div style="position:absolute;bottom:28px;right:28px;color:rgba(214,139,22,0.18);font-size:72px;animation:ornFloat 4s ease-in-out infinite 3s;">✦</div> -->
     <div id="loaderStars" style="position:absolute;inset:0;pointer-events:none;z-index:2;"></div>
     <div id="loaderRings" style="position:absolute;inset:0;pointer-events:none;z-index:2;display:flex;align-items:center;justify-content:center;"></div>
     <div style="position:relative;z-index:10;text-align:center;">
-        <!-- Logo -->
-        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;display:flex;align-items:center;justify-content:center;">
-            <img src="assets/images/moti-removebg-preview.png" alt="Logo" style="max-width:100%;max-height:100%;animation:gemGlowPulse 2s ease-in-out infinite;">
+        <div style="position:relative;width:110px;height:110px;margin:0 auto 28px;">
+            <div style="position:absolute;inset:-12px;border-radius:50%;border:2px solid rgba(214,139,22,0.4);animation:haloPulse 1.5s ease-in-out infinite;"></div>
+            <div style="position:absolute;inset:-24px;border-radius:50%;border:1px solid rgba(214,139,22,0.2);animation:haloPulse 1.5s ease-in-out infinite 0.5s;"></div>
+            <img src="./assets/images/moti-removebg-preview.png" alt="Moti Jewellers Logo" style="width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 0 8px #d68b16);animation:gemGlowPulse 1.5s ease-in-out infinite;">
+                <defs>
+                    <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#ff9900"/>
+                        <stop offset="45%" style="stop-color:#d68b16"/>
+                        <stop offset="100%" style="stop-color:#800020"/>
+                    </linearGradient>
+                    <linearGradient id="lg2" x1="100%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" style="stop-color:#f5c842;stop-opacity:0.9"/>
+                        <stop offset="100%" style="stop-color:#b5730e;stop-opacity:0.9"/>
+                    </linearGradient>
+                </defs>
+                <polygon points="40,2 76,22 76,58 40,78 4,58 4,22" fill="url(#lg1)" stroke="#f5c842" stroke-width="1.5"/>
+                <polygon points="40,2 76,22 40,40" fill="url(#lg2)" opacity="0.7"/>
+                <polygon points="76,22 76,58 40,40" fill="#800020" opacity="0.5"/>
+                <polygon points="76,58 40,78 40,40" fill="#b5730e" opacity="0.6"/>
+                <polygon points="40,78 4,58 40,40" fill="#d68b16" opacity="0.4"/>
+                <polygon points="4,58 4,22 40,40" fill="#ff9900" opacity="0.35"/>
+                <polygon points="4,22 40,2 40,40" fill="url(#lg2)" opacity="0.55"/>
+                <polygon points="40,14 68,28 68,52 40,66 12,52 12,28" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="0.8"/>
+            </svg>
         </div>
         <div style="color:#d68b16;font-size:22px;letter-spacing:6px;font-family:'Playfair Display',serif;margin-bottom:6px;animation:titleGold 2s ease infinite alternate;">MAA GOURI JEWELLERS</div>
         <p style="color:rgba(201,169,110,0.7);font-size:10px;letter-spacing:4px;text-transform:uppercase;margin-bottom:24px;">Crafting Timeless Elegance</p>
@@ -649,14 +675,14 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
         $logo_found = false;
         foreach($logo_paths as $path) {
             if(file_exists($path)) {
-                echo '<img src="'.$path.'" alt="Maa Gouri Jewellers Logo">';
+                echo '<img src="'.$path.'" alt="MOTI JEWELLERS Logo">';
                 $logo_found = true; break;
             }
         }
         if(!$logo_found) echo '<i class="fas fa-gem" style="color:#fff;font-size:30px;flex-shrink:0;"></i>';
         ?>
         <div class="sidebar-logo-text">
-            <h2>MAA GOURI JEWELLERS</h2>
+            <h2>GOURI JEWELLERS</h2>
             <p>Premium Since 2026</p>
         </div>
     </div>
@@ -665,13 +691,13 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
     <nav class="sidebar-nav">
         <div class="sidebar-section-label">Main Menu</div>
 
-        <a href="index.php">
-            <i class="fas fa-home"></i> HOME
+        <a href="index.php" class="active">
+            <i class="fas fa-home"></i> Home
         </a>
         <a href="billing.php">
             <i class="fas fa-receipt"></i> BILLING
         </a>
-        <a href="stock.php" class="active">
+        <a href="stock.php">
             <i class="fas fa-boxes"></i> STOCK
         </a>
         <a href="customers.php">
@@ -685,7 +711,7 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
             <i class="fas fa-chart-bar"></i> REPORTS
         </a>
         <a href="income_expenses.php">
-            <i class="fas fa-chart-line"></i> INCOME &amp; EXP
+            <i class="fas fa-chart-line"></i> INCOME & EXP
         </a>
 
         <div class="sidebar-divider"></div>
@@ -694,11 +720,17 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
         <a href="whatsapp_automation.php">
             <i class="fab fa-whatsapp"></i> WHATSAPP
         </a>
-        <a href="sbook.php">
-            <i class="fas fa-book"></i> karigori
+       
+        <a href="purchase.php">
+            <i class="fas fa-book"></i> PURCHASE
+        </a>
+        <a href="contacts.php">
+            <i class="fas fa-address-book"></i> CONTACTS
+        </a>
+        <a href="accounts.php">
+            <i class="fas fa-calculator"></i> ACCOUNTS
         </a>
     </nav>
-
     <!-- User Info + Logout -->
     <div class="sidebar-user">
         <div class="sidebar-user-info">
@@ -950,7 +982,7 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
                                                 <i class="fas fa-plus"></i> Stock
                                             </button>
                                             <button onclick="openDeleteModal(<?php echo $product['id']; ?>,'<?php echo addslashes($product['name']); ?>')" class="btn-delete">
-                                                <i class="fas fa-trash mr-1"></i> Del
+                                                <i class="fas fa-trash"></i> Del
                                             </button>
                                         </div>
                                     </td>
@@ -975,7 +1007,7 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
     <!-- Footer -->
     <footer style="background:linear-gradient(0deg,#f5e6c8,#fdf6e3);border-top:2px solid #d68b16;padding:20px;margin-top:40px;text-align:center;">
         <p class="text-xs" style="color:#7a4e0a;">
-            &copy; 2026 MAA GOURI JEWELLERS &nbsp;|&nbsp; CRAFTED WITH ELEGANCE &nbsp;|&nbsp;
+            &copy; 2026 Gouri JEWELLERS &nbsp;|&nbsp; CRAFTED WITH ELEGANCE &nbsp;|&nbsp;
             Developed by <a href="https://saamparktechnologyresearch.in/" target="_blank" style="text-decoration:underline;color:#800020;">STR</a>
         </p>
     </footer>
@@ -1105,12 +1137,12 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
 
     /* ---------- Item types ---------- */
     const itemsByCategory = {
-        'Gold 22K': ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Other'],
+        'Gold 22K': ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Noya','Steu Noya','Other'],
         'Gold 18K': ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Baby Ring','Bali','Pitaring','Other'],
-        'Silver':   ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Tops','Ladies Ring','Gents Ring','Breslet','Tika','Loket','Mankha','Payal','Bichiya','Nosering','Baby Ring','Pat (Gross)','S- (Gross)','Nosepin (Gross)','Sankha','Pola','Other'],
+        'Silver':   ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Tops','Ladies Ring','Gents Ring','Breslet','Tika','Loket','Mankha','Payal','Bichiya','Nosering','Baby Ring','Pat (Gross)','S- (Gross)','Nosepin (Gross)','Sankha','Pola','Silver Thali','Silver Bali','Silver Thali', 'Silver Bati ', 'Silver Glass', 'Silver Spoon ', 'Silver Showpiece', 'B.B.C Silver', 'Mix Silver', 'Other'],
         'Stone':    ['Natural Pearl','Gomed','Red Coral','Nila','Panna','Jerkon','Amethist','Cats Eye','Other'],
         'Diamond':  ['Ladies Ring','Gents Ring','Tops','Mangal Sutra','Nose pin','Necklace','Other'],
-        'Other':    ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Nova','Steu Nova','Shankha','Pala','Mala','Moti Mala','Trasel','Branch Fram','Braslate Pala','parl Mala','Gala','Reparing','Stamp Charg','Other']
+        'Other':    ['Chur','Bala','Churi','Necklace','Chain','Jhumka','Jhumkolol','Tops','Ladies Ring','Gents Ring','Chokey','Breslet','Ladies Breslet','Tika','Takti','Mantasa','Loket','Mangal Sutra','Moti Chokey','Nosepin','Sankha','Pola','Baby Ring','Bali','Pitaring','Breslet Noya','Steu Noya','Shankha','Pala','Mala','Moti Mala','Trasel','Branch Fram','Braslate Pala','parl Mala','Gala','Reparing','Stamp Charg','Other']
     };
 
     function updateItemTypes(catSelectId, itemSelectId, customDivId) {

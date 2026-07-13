@@ -89,6 +89,8 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <meta name="author" content="MANU GUPTA">
+    <meta name="description" content="Reports and Analytics for Gouri Jewellers">
     <title>Reports - Maa Gouri Jewellers</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -410,7 +412,13 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
         <div class="sidebar-divider"></div>
         <div class="sidebar-section-label">Tools</div>
         <a href="whatsapp_automation.php"><i class="fab fa-whatsapp"></i> WHATSAPP</a>
-        <a href="sbook.php"><i class="fas fa-book"></i> karigori</a>
+        <a href="sbook.php"><i class="fas fa-book"></i> KARIGORI</a>
+         <a href="purchase.php">
+            <i class="fas fa-book"></i>PURCHASE
+        </a>
+        <a href="account.php">
+            <i class="fas fa-book"></i> ACCOUNT
+        </a>
     </nav>
 
     <div class="sidebar-user">
@@ -459,14 +467,14 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
 
         <!-- ── CHARTS ROW ── -->
         <div class="charts-grid grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <!-- Sales Chart -->
+            <!-- Sales Chart
             <div class="chart-card">
                 <h3 class="section-title mb-4"><i class="fas fa-chart-line"></i> Last 7 Days Sales</h3>
                 <canvas id="salesChart"></canvas>
-            </div>
+            </div> -->
 
             <!-- Top Products -->
-            <div class="chart-card">
+            <!-- <div class="chart-card">
                 <h3 class="section-title mb-4"><i class="fas fa-trophy"></i> Top Selling Products</h3>
                 <div class="space-y-4">
                     <?php
@@ -490,7 +498,7 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
                     </div>
                     <?php endif; ?>
                 </div>
-            </div>
+            </div> -->
         </div>
 
         <!-- ── PAYMENT STATUS OVERVIEW ── -->

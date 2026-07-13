@@ -36,19 +36,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_otp'])) {
                 $mail->isSMTP();
                 $mail->Host       = 'smtp.gmail.com';
                 $mail->SMTPAuth   = true;
-                $mail->Username   = 'motijewellers9635985848@gmail.com';
-                $mail->Password   = 'fbkjcuiduiaozyee';
+                $mail->Username   = 'santudhara157@gmail.com';
+                $mail->Password   = 'gieoszdkzsouypho';
                 $mail->SMTPSecure = 'tls';
                 $mail->Port       = 587;
 
-                $mail->setFrom('motijewellers9635985848@gmail.com', 'Moti Jewellers');
+                $mail->setFrom('santudhara157@gmail.com', 'Gouri Jewellers');
                 $mail->addAddress($email, $user['name']);
                 $mail->isHTML(true);
-                $mail->Subject = '🔐 Password Reset OTP - Moti Jewellers';
+                $mail->Subject = '🔐 Password Reset OTP - Gouri Jewellers';
                 $mail->Body    = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;">
                 <div style="max-width:480px;margin:auto;border:1px solid #ddd;border-radius:10px;overflow:hidden;">
                   <div style="background:linear-gradient(135deg,#667eea,#764ba2);padding:20px;text-align:center;">
-                    <h2 style="color:#fff;margin:0;">💎 Moti Jewellers</h2>
+                    <h2 style="color:#fff;margin:0;">💎 Gouri Jewellers</h2>
                     <p style="color:#fff;margin:4px 0 0;font-size:13px;">Password Reset OTP</p>
                   </div>
                   <div style="padding:24px;text-align:center;">
@@ -58,10 +58,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_otp'])) {
                     <p style="color:#6b7280;font-size:13px;">Valid for <strong>10 minutes</strong>. Do not share with anyone.</p>
                   </div>
                   <div style="background:#f9fafb;padding:12px;text-align:center;font-size:11px;color:#9ca3af;">
-                    Moti Jewellers &mdash; Contact: +91 9635985848
+                    Gouri Jewellers &mdash; Contact: +91 96472 91299
                   </div>
                 </div></body></html>';
-                $mail->AltBody = "Your Moti Jewellers Password Reset OTP: $otp (valid for 10 minutes)";
+                $mail->AltBody = "Your Gouri Jewellers Password Reset OTP: $otp (valid for 10 minutes)";
                 $mail->send();
 
                 $_SESSION['fp_step']  = 'otp';
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_otp'])) {
 
             } catch (Exception $e) {
                 // OTP DB mein save hai, but email nahi gaya
-                $error = "❌ OTP send nahi hua: " . $mail->ErrorInfo;
+                $error = "❌ CAN'T OTP send: " . $mail->ErrorInfo;
                 // DB se delete kar do
                 mysqli_query($conn, "DELETE FROM otp_logins WHERE email = '$email' AND is_used = 0");
             }
@@ -84,6 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['send_otp'])) {
         $error = "❌ Email address not found!";
     }
 }
+// <meta name="author" content="MANU GUPTA">
 
 // ── STEP 2: Verify OTP ───────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['verify_otp'])) {
@@ -156,7 +157,9 @@ $step = $_SESSION['fp_step'] ?? $step;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Forgot Password - MOTI JEWELLERS</title>
+    <meta name="author" content="MANU GUPTA">
+    <meta name="description" content="Forgot Password for Gouri Jewellers">
+    <title>Forgot Password - GOURI JEWELLERS</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="assets/css/theme.css">
@@ -168,7 +171,7 @@ $step = $_SESSION['fp_step'] ?? $step;
         <!-- Header -->
         <div class="gradient-bg p-6 text-center">
             <i class="fas fa-gem text-4xl text-white mb-2"></i>
-            <h2 class="text-2xl font-bold text-white">MOTI JEWELLERS</h2>
+            <h2 class="text-2xl font-bold text-white">GOURI JEWELLERS</h2>
             <p class="text-white opacity-90 text-sm">Forgot Password</p>
         </div>
 

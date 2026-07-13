@@ -1,7 +1,5 @@
 
 -- Create Database
-CREATE DATABASE IF NOT EXISTS moti_jewellers;
-USE moti_jewellers;
 
 -- Users Table
 CREATE TABLE users (
@@ -73,10 +71,9 @@ INSERT INTO products (name, category, price, quantity) VALUES
 INSERT INTO users (name, mobile, email, password) VALUES
 ('Admin User', '9876543210', 'admin@gourijewellers.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
 
---Forgot password
+-- Forgot password
 
 -- Add email column to users table if not exists
-ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(100);
 
 -- Create password reset table
 CREATE TABLE IF NOT EXISTS password_resets (
@@ -102,8 +99,6 @@ UPDATE products SET serial_no = CONCAT('SN', LPAD(id, 4, '0')) WHERE serial_no I
 
 
 -- Add missing columns to customers table
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS address TEXT;
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS gst_number VARCHAR(20);
 
 -- Create invoices table if not exists
 CREATE TABLE IF NOT EXISTS invoices (
@@ -312,7 +307,6 @@ CREATE TABLE IF NOT EXISTS otp_logins (
 );
 
 -- Add email column to users table if not exists
-ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(100);
 
 -- Insert test user
 INSERT INTO users (name, mobile, email, password) VALUES 

@@ -6,6 +6,8 @@ if(!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
+// <meta name="author" content="MANU GUPTA">
+// <meta name="description" content="Income and Expense Management for Gouri Jewellers">
 
 // Handle Add Income
 if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_income'])) {
@@ -83,6 +85,8 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <meta name="author" content="MANU GUPTA">
+    <meta name="description" content="Income and Expense Management for Gouri Jewellers">
     <title>Income &amp; Expenses — Maa Gouri Jewellers</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -383,7 +387,13 @@ $logo_paths = ['assets/images/moti-removebg-preview.png','images/moti-removebg-p
         <div class="sidebar-divider"></div>
         <div class="sidebar-section-label">Tools</div>
         <a href="whatsapp_automation.php"><i class="fab fa-whatsapp"></i> WHATSAPP</a>
-        <a href="sbook.php"><i class="fas fa-book"></i> karigori</a>
+        <a href="sbook.php"><i class="fas fa-book"></i> KARIGORI</a>
+         <a href="purchase.php">
+            <i class="fas fa-book"></i>PURCHASE
+        </a>
+        <a href="account.php">
+            <i class="fas fa-book"></i> ACCOUNT
+        </a>
     </nav>
 
     <div class="sidebar-user">
